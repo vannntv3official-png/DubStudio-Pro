@@ -175,12 +175,33 @@ export const api = {
     return request<TranslationSegment[]>(`/translation/${projectId}`);
   },
 
-  async updateTranslation(projectId: string, translationId: string, translatedText: string): Promise<TranslationSegment> {
+  async updateTranslation(
+    projectId: string,
+    translationId: string,
+    data: Partial<TranslationSegment> | string
+  ): Promise<TranslationSegment> {
+    const body = typeof data === 'string' ? { translatedText: data, isManuallyEdited: true } : { ...data, isManuallyEdited: true };
     return request<TranslationSegment>(`/translation/${projectId}/${translationId}`, {
       method: 'PUT',
-      body: JSON.stringify({ translatedText, isManuallyEdited: true }),
+      body: JSON.stringify(body),
     });
   },
+
+  async regenerateSingleSegment(
+    projectId: string,
+    segmentId: string,
+    voiceId?: string,
+    rate = '+0%',
+    pitch = '+0Hz',
+    volume = '+0%',
+    syncMode?: string
+  ): Promise<GeneratedAudio> {
+    return request<GeneratedAudio>('/tts/regenerate-segment', {
+      method: 'POST',
+      body: JSON.stringify({ projectId, segmentId, voiceId, rate, pitch, volume, syncMode }),
+    });
+  },
+
 
   // Voices & TTS
   async listVoices(locale?: string): Promise<VoiceProfile[]> {

@@ -18,7 +18,10 @@ interface TranslationState {
   setProvider: (p: 'gemini' | 'codecraft') => void;
   setModel: (m: string) => void;
   updateTranslationText: (projectId: string, translationId: string, text: string) => Promise<void>;
+  updateTranslationFields: (projectId: string, translationId: string, fields: Partial<TranslationSegment>) => Promise<void>;
+  toggleApproval: (projectId: string, translationId: string) => Promise<void>;
 }
+
 
 export const useTranslationStore = create<TranslationState>((set, get) => ({
   translations: [],
@@ -68,4 +71,34 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       console.error('Failed to update translation on backend:', e);
     }
   },
+
+  updateTranslationFields: async (projectId: string, translationId: string, fields: Partial<TranslationSegment>) => {
+    set((state) => ({
+      translations: state.translations.map((t) =>
+        t.id === translationId ? { ...t, ...fields, isManuallyEdited: true } : t
+      ),
+    }));
+    try {
+      await api.updateTranslation(projectId, translationId, fields);
+    } catch (e) {
+      console.error('Failed to update translation fields on backend:', e);
+    }
+  },
+
+  toggleApproval: async (projectId: string, translationId: string) => {
+    const current = get().translations.find((t) => t.id === translationId);
+    if (!current) return;
+    const newStatus = current.approvalStatus === 'approved' ? 'needs_review' : 'approved';
+    set((state) => ({
+      translations: state.translations.map((t) =>
+        t.id === translationId ? { ...t, approvalStatus: newStatus } : t
+      ),
+    }));
+    try {
+      await api.updateTranslation(projectId, translationId, { approvalStatus: newStatus });
+    } catch (e) {
+      console.error('Failed to toggle approval status:', e);
+    }
+  },
 }));
+

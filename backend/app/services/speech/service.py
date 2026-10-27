@@ -1,7 +1,10 @@
+import json
+import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
-from sqlalchemy import select, delete
+from typing import Any
+from sqlalchemy import select, delete, update
 from app.database.session import get_project_engine, GlobalAsyncSessionLocal
 from app.models.project import ProjectModel
 from app.models.transcript import TranscriptSegmentModel
@@ -10,13 +13,117 @@ from app.models.speaker import SpeakerModel
 from app.models.voice import GeneratedAudioModel
 from app.models.timeline import TimelineTrackModel, TimelineClipModel
 from app.models.subtitle import SubtitleItemModel
+from app.models.setting import SettingModel
 from app.services.subtitles.service import deoverlap_subtitles
+from app.services.khmer.pronunciation import prepare_khmer_pronunciation
 from app.providers.edge_tts.provider import EdgeTTSProvider
+from app.providers.gemini.provider import GeminiProvider
+from app.providers.codecraft.provider import CodecraftProvider
 from app.schemas.voice import GeneratedAudioResponse
 from app.utils.ffmpeg import adjust_audio_speed_and_pad
 
+logger = logging.getLogger("dubstudio.services.speech")
+
+# Timing Policy Configuration per specification:
+# Mode      | Max Pause Borrowing | Max Tempo Factor
+# Natural   | 1000 ms             | 1.08x
+# Balanced  | 500 ms              | 1.12x
+# Strict    | 0 ms                | 1.18x
+TIMING_POLICIES: dict[str, dict[str, float]] = {
+    "natural": {"max_pause_ms": 1000, "max_tempo": 1.08},
+    "balanced": {"max_pause_ms": 500, "max_tempo": 1.12},
+    "strict": {"max_pause_ms": 0, "max_tempo": 1.18},
+}
+
 
 class SpeechAndAlignmentService:
+    @staticmethod
+    async def _revise_spoken_script_with_llm(
+        current_script: str,
+        target_window_sec: float,
+        measured_sec: float,
+        source_text: str,
+        g_session,
+    ) -> str | None:
+        """
+        Asks LLM to revise spoken Khmer script to be more concise to fit within the target window,
+        preserving facts, negation, names, and communicative intent.
+        """
+        try:
+            gemini_key = await g_session.get(SettingModel, "gemini_api_key")
+            gemini_keys_setting = await g_session.get(SettingModel, "gemini_api_keys")
+            gemini_model = await g_session.get(SettingModel, "gemini_model")
+            codecraft_key = await g_session.get(SettingModel, "codecraft_api_key")
+            codecraft_base = await g_session.get(SettingModel, "codecraft_base_url")
+            codecraft_model = await g_session.get(SettingModel, "codecraft_model")
+
+            has_gemini = bool(
+                (gemini_key and gemini_key.value and gemini_key.value.strip()) or
+                (gemini_keys_setting and gemini_keys_setting.value and gemini_keys_setting.value.strip())
+            )
+            has_codecraft = bool(codecraft_key and codecraft_key.value and codecraft_key.value.strip())
+
+            if not has_gemini and not has_codecraft:
+                return None
+
+            prompt = (
+                f"You are an expert film dubbing director revising dialogue timing.\n"
+                f"Original dialogue: \"{source_text}\"\n"
+                f"Current spoken Khmer script: \"{current_script}\"\n"
+                f"The spoken script takes {measured_sec:.2f} seconds to speak, but the maximum available window is {target_window_sec:.2f} seconds.\n"
+                f"Please revise the spoken Khmer script to be more concise (~{round(target_window_sec * 3.8)} syllables) so it fits without rushing.\n"
+                f"Rules: Preserve meaning, negation, and character names. Do not truncate dialogue.\n"
+                f"Return JSON strictly: {{\"revised_script\": \"...\"}}"
+            )
+
+            if has_gemini:
+                provider = GeminiProvider(
+                    api_key=gemini_key.value if (gemini_key and gemini_key.value) else None,
+                    api_keys=gemini_keys_setting.value if (gemini_keys_setting and gemini_keys_setting.value) else None,
+                    model=gemini_model.value if (gemini_model and gemini_model.value) else "gemini-2.5-flash",
+                )
+                if not provider.api_keys:
+                    return None
+                from google.genai import types
+                resp = await provider._generate_content_resilient(
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2),
+                    task_name="timing_revision",
+                )
+                raw = resp.text or "{}"
+                data = json.loads(raw)
+                revised = str(data.get("revised_script", "")).strip()
+                if revised and revised != current_script:
+                    return revised
+            elif has_codecraft:
+                provider = CodecraftProvider(
+                    api_key=codecraft_key.value,
+                    base_url=codecraft_base.value if (codecraft_base and codecraft_base.value) else "https://codecraftapi.com/v1",
+                    model=codecraft_model.value if (codecraft_model and codecraft_model.value) else "deepseek-chat",
+                )
+                if not provider.api_key:
+                    return None
+                import httpx
+                headers = provider._get_headers()
+                req_body = {
+                    "model": provider.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.2,
+                }
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.post(f"{provider.base_url}/chat/completions", headers=headers, json=req_body)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    parsed = json.loads(data["choices"][0]["message"]["content"])
+                    revised = str(parsed.get("revised_script", "")).strip()
+                    if revised and revised != current_script:
+                        return revised
+
+        except Exception as e:
+            logger.warning(f"Script revision attempt failed: {e}")
+        return None
+
     @staticmethod
     async def run_batch_speech_and_alignment(
         project_id: str,
@@ -34,6 +141,8 @@ class SpeechAndAlignmentService:
                 raise ValueError("Project not found")
 
         project_dir = Path(project.project_dir)
+        takes_dir = project_dir / "media" / "takes"
+        takes_dir.mkdir(parents=True, exist_ok=True)
         _, session_maker = get_project_engine(project_dir)
 
         # Determine target voice
@@ -41,7 +150,10 @@ class SpeechAndAlignmentService:
         if not voice_id:
             voice_id = await EdgeTTSProvider.get_default_voice_for_locale(target_lang)
 
-        chosen_sync_mode = sync_mode or project.sync_mode or "balanced"
+        chosen_sync_mode = (sync_mode or project.sync_mode or "balanced").lower()
+        policy = TIMING_POLICIES.get(chosen_sync_mode, TIMING_POLICIES["balanced"])
+        max_pause_ms = policy["max_pause_ms"]
+        max_tempo = policy["max_tempo"]
 
         async with session_maker() as session:
             # Load transcript segments sorted chronologically
@@ -87,7 +199,7 @@ class SpeechAndAlignmentService:
 
                 if on_progress:
                     pct = 10.0 + (idx / max(1, total)) * 80.0
-                    on_progress(pct, f"Generating & synchronizing speech ({idx + 1}/{total})...")
+                    on_progress(pct, f"Synthesizing & aligning speech ({idx + 1}/{total})...")
 
                 # Resolve speaker voice
                 sp = speakers.get(t_seg.speaker_id)
@@ -97,67 +209,124 @@ class SpeechAndAlignmentService:
                 seg_volume = (sp.volume if sp and sp.volume else volume) or volume
 
                 target_dur_ms = max(400, t_seg.end_ms - t_seg.start_ms)
-                raw_audio_path = project_dir / "media" / "generated" / f"raw_{t_seg.id}.wav"
-                aligned_audio_path = project_dir / "media" / "generated" / f"aligned_{t_seg.id}.wav"
 
-                # 1. Synthesize Speech with text optimization & audio normalization
-                raw_dur_ms = await EdgeTTSProvider.generate_speech(
-                    text=tr_seg.translated_text,
-                    output_path=raw_audio_path,
+                # Step 4: Calculate verified available speech window
+                curr_idx = seg_id_to_idx.get(t_seg.id, -1)
+                next_t_seg = ordered_transcripts[curr_idx + 1] if 0 <= curr_idx < len(ordered_transcripts) - 1 else None
+
+                if next_t_seg:
+                    gap_ms = max(0, next_t_seg.start_ms - t_seg.end_ms)
+                    allowed_pause = min(max_pause_ms, max(0, gap_ms - 80))
+                else:
+                    allowed_pause = max_pause_ms
+
+                available_window_ms = target_dur_ms + allowed_pause
+
+                # Resolve text representations
+                spoken_script = tr_seg.spoken_script or tr_seg.translated_text
+                pron_text = tr_seg.pronunciation_text or prepare_khmer_pronunciation(spoken_script, voice_id=seg_voice)
+
+                # Take management: count existing takes
+                ex_takes_stmt = select(GeneratedAudioModel).where(
+                    GeneratedAudioModel.project_id == project_id,
+                    GeneratedAudioModel.segment_id == t_seg.id,
+                )
+                ex_takes_res = await session.execute(ex_takes_stmt)
+                existing_takes = ex_takes_res.scalars().all()
+                take_number = len(existing_takes) + 1
+
+                take_uuid = str(uuid.uuid4())[:8]
+                raw_take_path = takes_dir / f"take_{t_seg.id}_t{take_number}_{take_uuid}_raw.wav"
+                aligned_take_path = takes_dir / f"take_{t_seg.id}_t{take_number}_{take_uuid}_aligned.wav"
+
+                # Step 1 & 2: Synthesize using voice and supported controls
+                measured_dur_ms = await EdgeTTSProvider.generate_speech(
+                    text=pron_text,
+                    output_path=raw_take_path,
                     voice_id=seg_voice,
                     rate=seg_rate,
                     pitch=seg_pitch,
                     volume=seg_volume,
                 )
+                measured_dur_ms = max(100.0, measured_dur_ms)
 
-                # 2. Timing Alignment & Breath Gap Utilization
-                raw_dur_ms = max(100.0, raw_dur_ms)
-                curr_idx = seg_id_to_idx.get(t_seg.id, -1)
-                next_t_seg = ordered_transcripts[curr_idx + 1] if 0 <= curr_idx < len(ordered_transcripts) - 1 else None
+                # Step 5 & 6: Bounded Script Revision Loop (Max 2 attempts)
+                revision_attempts = 0
+                review_reasons: list[str] = list(tr_seg.review_reasons or [])
 
-                # Compute maximum window before the next speaker starts (leaving 80ms breathing space)
-                if next_t_seg:
-                    available_gap_ms = max(target_dur_ms, next_t_seg.start_ms - t_seg.start_ms - 80)
+                if (
+                    measured_dur_ms > available_window_ms * max_tempo
+                    and not tr_seg.is_manually_edited
+                    and tr_seg.approval_status != "approved"
+                ):
+                    for attempt in range(1, 3):
+                        revision_attempts = attempt
+                        async with GlobalAsyncSessionLocal() as g_sess:
+                            revised = await SpeechAndAlignmentService._revise_spoken_script_with_llm(
+                                current_script=spoken_script,
+                                target_window_sec=available_window_ms / 1000.0,
+                                measured_sec=measured_dur_ms / 1000.0,
+                                source_text=t_seg.text,
+                                g_session=g_sess,
+                            )
+
+                        if revised and revised != spoken_script:
+                            rev_pron = prepare_khmer_pronunciation(revised, voice_id=seg_voice)
+                            candidate_path = takes_dir / f"take_{t_seg.id}_t{take_number}_rev{attempt}_{take_uuid}.wav"
+                            candidate_dur = await EdgeTTSProvider.generate_speech(
+                                text=rev_pron,
+                                output_path=candidate_path,
+                                voice_id=seg_voice,
+                                rate=seg_rate,
+                                pitch=seg_pitch,
+                                volume=seg_volume,
+                            )
+                            # Step 7: Retain candidate only if measured timing improves
+                            if candidate_dur < measured_dur_ms:
+                                spoken_script = revised
+                                pron_text = rev_pron
+                                raw_take_path = candidate_path
+                                measured_dur_ms = candidate_dur
+                                tr_seg.spoken_script = revised
+                                tr_seg.pronunciation_text = rev_pron
+                                if measured_dur_ms <= available_window_ms * max_tempo:
+                                    break
+
+                # Step 8: Apply bounded pitch-preserving tempo adjustment (atempo)
+                if measured_dur_ms <= available_window_ms:
+                    tempo_factor = 1.0
                 else:
-                    available_gap_ms = max(target_dur_ms, int(raw_dur_ms) + 800)
-
-                if chosen_sync_mode == "natural":
-                    # Natural mode preserves 1.0x speed when speech fits in pause
-                    if raw_dur_ms <= available_gap_ms:
-                        speed_factor = 1.0
-                    else:
-                        speed_factor = min(1.25, max(1.0, raw_dur_ms / available_gap_ms))
-                elif chosen_sync_mode == "strict":
-                    ratio = raw_dur_ms / target_dur_ms
-                    speed_factor = max(0.80, min(1.40, ratio))
-                else:  # "balanced" (Default & optimal)
-                    if raw_dur_ms <= target_dur_ms:
-                        speed_factor = 1.0
-                    elif raw_dur_ms <= available_gap_ms:
-                        # Fits in natural breath pause between dialogue: gentle speed up at most 1.10x
-                        speed_factor = min(1.10, raw_dur_ms / target_dur_ms)
-                    else:
-                        # Exceeds pause: speed up smoothly to fit without overlapping next dialogue
-                        speed_factor = min(1.28, max(1.0, raw_dur_ms / available_gap_ms))
+                    tempo_factor = min(max_tempo, measured_dur_ms / available_window_ms)
 
                 await adjust_audio_speed_and_pad(
-                    input_audio_path=raw_audio_path,
-                    output_audio_path=aligned_audio_path,
-                    speed_factor=speed_factor,
-                    target_duration_ms=None,  # Never truncate dialogue
+                    input_audio_path=raw_take_path,
+                    output_audio_path=aligned_take_path,
+                    speed_factor=round(tempo_factor, 2),
+                    target_duration_ms=None,  # NEVER truncate dialogue
                     allow_truncation=False,
                 )
 
-                final_dur_ms = EdgeTTSProvider.get_audio_duration_ms(aligned_audio_path)
+                # Step 9: Measure processed output again
+                final_dur_ms = EdgeTTSProvider.get_audio_duration_ms(aligned_take_path)
 
-                # 3. Save GeneratedAudio Record
-                # Remove existing if any
-                await session.execute(
-                    delete(GeneratedAudioModel).where(
-                        GeneratedAudioModel.project_id == project_id,
-                        GeneratedAudioModel.segment_id == t_seg.id
-                    )
-                )
+                # Step 10: Flag unresolved problems for review
+                review_status = "generated"
+                if final_dur_ms > available_window_ms + 60:
+                    if "timing_overrun" not in review_reasons:
+                        review_reasons.append("timing_overrun")
+                    review_status = "needs_review"
+                elif final_dur_ms < target_dur_ms * 0.55 and target_dur_ms > 2000:
+                    if "timing_underrun" not in review_reasons:
+                        review_reasons.append("timing_underrun")
+                    review_status = "needs_review"
+
+                # Update translation approval status
+                tr_seg.approval_status = review_status if tr_seg.approval_status != "approved" else "approved"
+                tr_seg.review_reasons = review_reasons
+
+                # Preserve takes: mark older takes as not current
+                for ex_take in existing_takes:
+                    ex_take.is_current = False
 
                 gen_model = GeneratedAudioModel(
                     id=str(uuid.uuid4()),
@@ -166,24 +335,34 @@ class SpeechAndAlignmentService:
                     translation_id=tr_seg.id,
                     voice_id=seg_voice,
                     original_duration_ms=target_dur_ms,
-                    raw_duration_ms=int(raw_dur_ms),
+                    raw_duration_ms=int(measured_dur_ms),
+                    measured_duration_ms=int(measured_dur_ms),
                     aligned_duration_ms=int(final_dur_ms),
-                    speed_factor=round(speed_factor, 2),
-                    audio_path=str(raw_audio_path.resolve()),
-                    aligned_audio_path=str(aligned_audio_path.resolve()),
+                    timing_budget_ms=int(available_window_ms),
+                    speed_factor=round(tempo_factor, 2),
+                    tempo_factor=round(tempo_factor, 2),
+                    audio_path=str(raw_take_path.resolve()),
+                    aligned_audio_path=str(aligned_take_path.resolve()),
                     sync_mode=chosen_sync_mode,
                     status="aligned",
+                    take_number=take_number,
+                    is_current=True,
+                    review_status=review_status,
+                    review_reasons=review_reasons,
+                    revision_attempts=revision_attempts,
+                    pronunciation_text_used=pron_text,
+                    stale=False,
                     created_at=now,
                 )
                 session.add(gen_model)
                 generated_list.append(gen_model)
 
-                # 4. Place or update clip in dubbed_voice track
+                # Update dubbed_voice timeline track
                 if dub_track:
                     await session.execute(
                         delete(TimelineClipModel).where(
                             TimelineClipModel.track_id == dub_track.id,
-                            TimelineClipModel.source_id == gen_model.id
+                            TimelineClipModel.source_id == gen_model.id,
                         )
                     )
                     clip = TimelineClipModel(
@@ -191,7 +370,7 @@ class SpeechAndAlignmentService:
                         track_id=dub_track.id,
                         project_id=project_id,
                         source_id=gen_model.id,
-                        label=tr_seg.translated_text[:30],
+                        label=spoken_script[:30],
                         start_ms=t_seg.start_ms,
                         duration_ms=int(final_dur_ms),
                         playback_rate=1.0,
@@ -200,7 +379,8 @@ class SpeechAndAlignmentService:
                     )
                     session.add(clip)
 
-                # 5. Synchronize subtitle item (strictly clamped to avoid overlapping next segment)
+                # Synchronize subtitle item (strictly clamped to avoid overlapping next segment)
+                sub_display_text = tr_seg.subtitle_text or tr_seg.translated_text
                 if next_t_seg:
                     sub_end_ms = min(t_seg.start_ms + int(final_dur_ms), max(t_seg.start_ms + 200, next_t_seg.start_ms - 40))
                     range_end = next_t_seg.start_ms
@@ -212,7 +392,7 @@ class SpeechAndAlignmentService:
                     delete(SubtitleItemModel).where(
                         SubtitleItemModel.project_id == project_id,
                         SubtitleItemModel.start_ms >= t_seg.start_ms - 30,
-                        SubtitleItemModel.start_ms < range_end
+                        SubtitleItemModel.start_ms < range_end,
                     )
                 )
                 sub_item = SubtitleItemModel(
@@ -220,12 +400,12 @@ class SpeechAndAlignmentService:
                     project_id=project_id,
                     start_ms=t_seg.start_ms,
                     end_ms=sub_end_ms,
-                    text=tr_seg.translated_text,
+                    text=sub_display_text,
                     speaker_id=t_seg.speaker_id,
                 )
                 session.add(sub_item)
 
-            # Auto-deoverlap all subtitle items in the project after batch generation
+            # Auto-deoverlap all subtitle items in the project
             all_subs_stmt = select(SubtitleItemModel).where(SubtitleItemModel.project_id == project_id).order_by(SubtitleItemModel.start_ms)
             all_subs_res = await session.execute(all_subs_stmt)
             curr_subs = list(all_subs_res.scalars().all())
@@ -249,7 +429,7 @@ class SpeechAndAlignmentService:
                 await session.refresh(g)
 
             if on_progress:
-                on_progress(100.0, f"Speech generation and alignment completed for {len(generated_list)} segments.")
+                on_progress(100.0, f"Speech generation completed for {len(generated_list)} segments.")
 
             return [GeneratedAudioResponse.model_validate(g) for g in generated_list]
 
@@ -263,6 +443,33 @@ class SpeechAndAlignmentService:
         project_dir = Path(project.project_dir)
         _, session_maker = get_project_engine(project_dir)
         async with session_maker() as session:
-            stmt = select(GeneratedAudioModel).where(GeneratedAudioModel.project_id == project_id)
+            stmt = select(GeneratedAudioModel).where(
+                GeneratedAudioModel.project_id == project_id,
+                GeneratedAudioModel.is_current == True,
+            )
             res = await session.execute(stmt)
             return [GeneratedAudioResponse.model_validate(g) for g in res.scalars().all()]
+
+    @staticmethod
+    async def regenerate_single_segment(
+        project_id: str,
+        segment_id: str,
+        voice_id: str | None = None,
+        rate: str = "+0%",
+        pitch: str = "+0Hz",
+        volume: str = "+0%",
+        sync_mode: str | None = None,
+    ) -> GeneratedAudioResponse:
+        results = await SpeechAndAlignmentService.run_batch_speech_and_alignment(
+            project_id=project_id,
+            voice_id=voice_id,
+            rate=rate,
+            pitch=pitch,
+            volume=volume,
+            segment_ids=[segment_id],
+            sync_mode=sync_mode,
+        )
+        if not results:
+            raise ValueError(f"Failed to generate speech for segment {segment_id}")
+        return results[0]
+

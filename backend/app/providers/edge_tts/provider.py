@@ -7,6 +7,7 @@ import edge_tts
 import soundfile as sf
 from app.core.errors import DubStudioError
 from app.utils.ffmpeg import FFMPEG_BIN
+from app.services.khmer.pronunciation import prepare_khmer_pronunciation
 
 logger = logging.getLogger("dubstudio.providers.edge_tts")
 
@@ -14,12 +15,16 @@ logger = logging.getLogger("dubstudio.providers.edge_tts")
 def clean_tts_text(text: str, voice_id: str = "") -> str:
     """
     Cleans and optimizes text for natural Edge TTS neural synthesis.
-    - Preserves natural word and phrase pauses for Khmer prosody
+    - Preserves Khmer Coeng combining ligatures without breaking
     - Normalizes markdown formatting and excess whitespace
     - Ensures proper sentence cadence and emotional ending punctuation
     """
     if not text:
         return ""
+
+    is_khmer = "km" in voice_id.lower() or any("\u1780" <= c <= "\u17ff" for c in text)
+    if is_khmer:
+        return prepare_khmer_pronunciation(text, voice_id=voice_id)
 
     # Strip HTML / XML tags
     cleaned = re.sub(r"<[^>]+>", " ", text)
@@ -27,11 +32,7 @@ def clean_tts_text(text: str, voice_id: str = "") -> str:
     # Strip Markdown symbols (*, _, `, #, ~, >, quotes)
     cleaned = re.sub(r"[\*_`#~>]", " ", cleaned)
 
-    # Convert zero-width spaces between words to standard spaces for natural neural prosody
-    cleaned = re.sub(r"[\u200b\u200c\u200d\ufeff]+", " ", cleaned)
-    cleaned = re.sub(r"[\u200e\u200f]", "", cleaned)
-
-    # Collapse multiple spaces and trim
+    # Collapse whitespace
     cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()
 
     # Normalize repeated punctuation
@@ -39,18 +40,11 @@ def clean_tts_text(text: str, voice_id: str = "") -> str:
     cleaned = re.sub(r"!+", "!", cleaned)
     cleaned = re.sub(r"(\.\s*){3,}", "...", cleaned)
 
-    # Ensure natural space before Khmer punctuation so neural model modulates pitch inflection
-    cleaned = re.sub(r"\s*([។!?])", r" \1", cleaned)
-    cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()
-
-    # Natural sentence-ending cadence for neural TTS
-    if cleaned and not cleaned[-1] in (".", "!", "?", "។", "៕", "…", ":", ";"):
-        if "km" in voice_id.lower() or any("\u1780" <= c <= "\u17ff" for c in cleaned):
-            cleaned += " ។"
-        else:
-            cleaned += "."
+    if cleaned and not cleaned[-1] in (".", "!", "?", "…", ":", ";"):
+        cleaned += "."
 
     return cleaned
+
 
 # Cached voices list
 _VOICE_CACHE: list[dict[str, Any]] = []
@@ -97,7 +91,26 @@ DEFAULT_VOICES: list[dict[str, Any]] = [
 
 class EdgeTTSProvider:
     @staticmethod
+    def get_capabilities() -> dict[str, Any]:
+        """
+        Reports provider capabilities honestly.
+        Edge-TTS supports rate, pitch, and volume adjustments.
+        It does NOT support arbitrary SSML emotion styles, phoneme controls, or precise duration targeting.
+        """
+        return {
+            "provider_name": "edge_tts",
+            "supports_rate": True,
+            "supports_pitch": True,
+            "supports_volume": True,
+            "supports_ssml_emotion": False,
+            "supports_phoneme_control": False,
+            "supports_precise_duration": False,
+            "supported_emotions": [],
+        }
+
+    @staticmethod
     async def list_voices(force_refresh: bool = False) -> list[dict[str, Any]]:
+
         global _VOICE_CACHE
         if _VOICE_CACHE and not force_refresh:
             return _VOICE_CACHE

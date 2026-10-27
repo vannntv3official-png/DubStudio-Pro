@@ -101,6 +101,17 @@ export interface TranscriptSegment {
   updatedAt: string;
 }
 
+// Review Workflow Types
+export type ReviewStatus = 'draft' | 'generated' | 'needs_review' | 'approved' | 'stale' | 'failed';
+export type ReviewReason =
+  | 'timing_overrun'
+  | 'timing_underrun'
+  | 'pronunciation_uncertain'
+  | 'terminology_check'
+  | 'pronoun_ambiguity'
+  | 'manual_edit_required'
+  | string;
+
 // Translation
 export interface TranslationSegment {
   id: string;
@@ -108,11 +119,19 @@ export interface TranslationSegment {
   segmentId: string; // Foreign key to TranscriptSegment
   sourceText: string;
   translatedText: string;
+  spokenScript?: string | null;
+  subtitleText?: string | null;
+  pronunciationText?: string | null;
   sourceLanguage: string;
   targetLanguage: string;
   provider: AIProvider;
   model: string;
   status: 'pending' | 'completed' | 'edited';
+  approvalStatus?: ReviewStatus;
+  reviewReasons?: ReviewReason[];
+  contextNotes?: string | null;
+  formOfAddress?: string | null;
+  register?: string | null;
   isManuallyEdited: boolean;
   createdAt: string;
   updatedAt: string;
@@ -124,6 +143,10 @@ export interface Speaker {
   projectId: string;
   name: string;
   color: string;
+  gender?: 'male' | 'female' | 'neutral' | string | null;
+  ageGroup?: 'child' | 'youth' | 'adult' | 'elder' | string | null;
+  relationshipRole?: string | null;
+  preferredFormOfAddress?: string | null;
   voiceId?: string | null;
   ttsProvider?: TTSProvider;
   rate?: string; // e.g. "+0%"
@@ -153,14 +176,25 @@ export interface GeneratedAudio {
   voiceId: string;
   originalDurationMs: number;
   rawDurationMs: number;
+  measuredDurationMs?: number;
   alignedDurationMs: number;
+  timingBudgetMs?: number;
   speedFactor: number;
+  tempoFactor?: number;
   audioPath: string;
   alignedAudioPath: string;
   syncMode: SyncMode;
   status: 'generated' | 'aligned' | 'failed';
+  takeNumber?: number;
+  isCurrent?: boolean;
+  reviewStatus?: ReviewStatus;
+  reviewReasons?: ReviewReason[];
+  revisionAttempts?: number;
+  pronunciationTextUsed?: string | null;
+  stale?: boolean;
   createdAt: string;
 }
+
 
 // Timeline
 export type TrackType = 'video' | 'original_audio' | 'dubbed_voice' | 'background_audio' | 'subtitles';
@@ -248,6 +282,10 @@ export interface ProjectManifest {
   lastOpenedAt: string;
   sourceLanguage?: string;
   targetLanguage?: string;
+  dubbingRegister?: 'natural' | 'balanced' | 'strict';
+  characterMemory?: Record<string, any>;
+  glossary?: Record<string, string>;
+  pronunciationOverrides?: Record<string, string>;
   mediaAssetId?: string | null;
   durationMs: number;
   syncMode: SyncMode;
