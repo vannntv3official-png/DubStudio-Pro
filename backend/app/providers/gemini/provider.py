@@ -354,8 +354,10 @@ class GeminiProvider:
             "  }\n"
             "]"
         )
-        if source_language:
+        if source_language and source_language.lower() not in ("auto", "detect", "auto-detect"):
             prompt += f" The expected spoken language is {source_language}."
+        else:
+            prompt += " Automatically detect and accurately transcribe whatever spoken language is present in the audio (e.g. Chinese, English, Khmer, Thai, Japanese, etc.)."
 
         try:
             with open(path, "rb") as f:
@@ -470,8 +472,9 @@ class GeminiProvider:
                 **({"preferred_address": s.get("preferred_address")} if s.get("preferred_address") else {}),
             })
 
+        src_desc = source_language if source_language and source_language.lower() not in ("auto", "detect", "auto-detect") else "the detected source language"
         prompt = (
-            f"Translate and adapt the following dialogue segments from {source_language} to {target_language} (Register: {dubbing_register}).\n"
+            f"Translate and adapt the following dialogue segments from {src_desc} to {target_language} (Register: {dubbing_register}).\n"
             "Return a JSON array where each object has:\n"
             "- 'id': exact segment id matching input (e.g. 'seg_1', 'seg_2')\n"
             "- 'translated_text': meaning-preserving translation\n"

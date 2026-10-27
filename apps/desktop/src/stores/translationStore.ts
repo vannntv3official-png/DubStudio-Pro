@@ -20,6 +20,7 @@ interface TranslationState {
   updateTranslationText: (projectId: string, translationId: string, text: string) => Promise<void>;
   updateTranslationFields: (projectId: string, translationId: string, fields: Partial<TranslationSegment>) => Promise<void>;
   toggleApproval: (projectId: string, translationId: string) => Promise<void>;
+  approveAll: (projectId: string) => Promise<void>;
 }
 
 
@@ -98,6 +99,23 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       await api.updateTranslation(projectId, translationId, { approvalStatus: newStatus });
     } catch (e) {
       console.error('Failed to toggle approval status:', e);
+    }
+  },
+
+  approveAll: async (projectId: string) => {
+    const unapproved = get().translations.filter((t) => t.approvalStatus !== 'approved');
+    if (unapproved.length === 0) return;
+    set((state) => ({
+      translations: state.translations.map((t) => ({ ...t, approvalStatus: 'approved' })),
+    }));
+    try {
+      await Promise.all(
+        unapproved.map((t) =>
+          api.updateTranslation(projectId, t.id, { approvalStatus: 'approved' })
+        )
+      );
+    } catch (e) {
+      console.error('Failed to approve all translations:', e);
     }
   },
 }));
