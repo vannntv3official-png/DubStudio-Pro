@@ -110,22 +110,27 @@ class CodecraftProvider:
         if character_memory:
             system_prompt += f"\nCharacter Context: {json.dumps(character_memory, ensure_ascii=False)}"
 
-        payload_items = [
-            {
-                "id": s["id"],
+        # Build alias map so LLM sees clean short IDs ("seg_1", "seg_2")
+        id_alias_map: dict[str, str] = {}
+        payload_items = []
+        for i, s in enumerate(segments):
+            short_id = f"seg_{i + 1}"
+            id_alias_map[short_id] = s["id"]
+            id_alias_map[str(i + 1)] = s["id"]
+            id_alias_map[s["id"]] = s["id"]
+            payload_items.append({
+                "id": short_id,
                 "text": s["text"],
                 "speaker": s.get("speaker_name") or s.get("speaker_id", "speaker_1"),
                 "duration_sec": s.get("duration_sec", 2.0),
                 **({"preceding": s.get("preceding")} if s.get("preceding") else {}),
                 **({"following": s.get("following")} if s.get("following") else {}),
                 **({"preferred_address": s.get("preferred_address")} if s.get("preferred_address") else {}),
-            }
-            for s in segments
-        ]
+            })
 
         user_prompt = (
             f"Translate and adapt the following dialogue segments to {target_language} (Register: {dubbing_register}).\n"
-            "Format: JSON array of objects with keys 'id', 'translated_text', 'spoken_script', 'subtitle_text', 'form_of_address'.\n"
+            "Format: JSON array of objects with keys 'id' (e.g. 'seg_1', 'seg_2'), 'translated_text', 'spoken_script', 'subtitle_text', 'form_of_address'.\n"
             f"Segments:\n{json.dumps(payload_items, ensure_ascii=False)}"
         )
 
@@ -163,7 +168,12 @@ class CodecraftProvider:
                     raise DubStudioError("TRANSLATION_PARSE_ERROR", f"Expected list of segments from Codecraft, got: {type(parsed)}")
 
                 requested_ids = [s["id"] for s in segments]
-                validated_lookup = TranslationBatchValidator.validate_batch_structure(requested_ids, parsed)
+                validated_lookup = TranslationBatchValidator.validate_batch_structure(
+                    requested_ids=requested_ids,
+                    response_items=parsed,
+                    id_alias_map=id_alias_map,
+                )
+
 
                 results: list[TranslationResultItem] = []
                 for s in segments:

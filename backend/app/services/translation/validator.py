@@ -16,50 +16,109 @@ class TranslationBatchValidator:
     def validate_batch_structure(
         requested_ids: list[str],
         response_items: list[dict[str, Any]],
+        id_alias_map: dict[str, str] | None = None,
     ) -> dict[str, dict[str, Any]]:
         """
-        Strict structural validation:
-        - Rejects missing segment IDs.
-        - Rejects duplicate IDs.
-        - Rejects unexpected IDs.
-        - Rejects empty or invalid values.
-        - Rejects silent substitution of untranslated source dialogue.
-        Returns a lookup map: segment_id -> response_dict.
+        Validates provider response structure with resilient ID resolution:
+        - Resolves IDs via alias mapping (seg_1, seg_2 -> real UUID),
+          exact match, prefix/truncation tolerance, or ordinal position.
+        - Rejects missing segment IDs (all requested IDs must be satisfied).
+        - Rejects duplicate mapped IDs.
+        - Rejects truly unexpected or unresolvable items.
+        - Rejects empty translated text values.
+        Returns a lookup map: real_segment_id -> response_dict.
         """
         requested_set = set(requested_ids)
         if len(requested_set) != len(requested_ids):
             raise DubStudioError("VALIDATION_ERROR", "Duplicate segment IDs in translation request batch.")
 
-        seen_ids = set()
-        lookup: dict[str, dict[str, Any]] = {}
+        alias_map = dict(id_alias_map or {})
+        # Prepopulate alias map with index aliases: "1" -> id[0], "seg_1" -> id[0], etc.
+        for idx, req_id in enumerate(requested_ids):
+            alias_map[str(idx + 1)] = req_id
+            alias_map[f"seg_{idx + 1}"] = req_id
+            alias_map[f"segment_{idx + 1}"] = req_id
+            alias_map[req_id] = req_id
 
-        for item in response_items:
-            seg_id = item.get("id") or item.get("segment_id")
-            if not seg_id:
-                raise DubStudioError("VALIDATION_ERROR", f"Malformed response: item missing 'id': {item}")
+        unmapped_req_ids = set(requested_ids)
+        seen_raw_ids: set[str] = set()
+        seen_target_ids: set[str] = set()
+        resolved_lookup: dict[str, dict[str, Any]] = {}
+        unresolved_items: list[tuple[int, dict[str, Any], str]] = []
 
-            if seg_id in seen_ids:
-                raise DubStudioError("VALIDATION_ERROR", f"Duplicate segment ID in response: {seg_id}")
-            seen_ids.add(seg_id)
+        # Pass 1: Direct, alias, and prefix/truncation matching
+        for item_idx, item in enumerate(response_items):
+            raw_id = str(item.get("id") or item.get("segment_id") or "").strip()
+            if not raw_id and item.get("index") is not None:
+                raw_id = str(item.get("index"))
 
-            if seg_id not in requested_set:
-                raise DubStudioError("VALIDATION_ERROR", f"Unexpected segment ID in provider response: {seg_id}")
+            # Check for duplicate raw ID
+            if raw_id:
+                if raw_id in seen_raw_ids:
+                    raise DubStudioError("VALIDATION_ERROR", f"Duplicate segment ID in provider response: {raw_id}")
+                seen_raw_ids.add(raw_id)
 
-            t_text = str(item.get("translated_text", "")).strip()
-            if not t_text:
-                raise DubStudioError("VALIDATION_ERROR", f"Empty translated_text for segment ID: {seg_id}")
+            target_id = None
+            if raw_id in unmapped_req_ids:
+                target_id = raw_id
+            elif raw_id in alias_map:
+                candidate_target = alias_map[raw_id]
+                if candidate_target in seen_target_ids:
+                    raise DubStudioError("VALIDATION_ERROR", f"Duplicate segment ID in provider response: {raw_id}")
+                if candidate_target in unmapped_req_ids:
+                    target_id = candidate_target
+            else:
+                # Check for prefix or 1-2 char truncation (e.g. LLM dropped trailing char of UUID)
+                clean_raw = raw_id.replace("-", "").lower()
+                candidates = [
+                    req_id for req_id in unmapped_req_ids
+                    if (len(raw_id) >= 8 and (req_id.startswith(raw_id) or raw_id.startswith(req_id)))
+                    or (len(clean_raw) >= 8 and req_id.replace("-", "").lower().startswith(clean_raw))
+                ]
+                if len(candidates) == 1:
+                    target_id = candidates[0]
 
-            lookup[seg_id] = item
+            if target_id:
+                if target_id in seen_target_ids:
+                    raise DubStudioError("VALIDATION_ERROR", f"Duplicate segment ID in provider response: {target_id}")
+                t_text = str(item.get("translated_text", "")).strip()
+                if not t_text:
+                    raise DubStudioError("VALIDATION_ERROR", f"Empty translated_text for segment ID: {target_id}")
+                resolved_lookup[target_id] = item
+                seen_target_ids.add(target_id)
+                unmapped_req_ids.remove(target_id)
+            else:
+                unresolved_items.append((item_idx, item, raw_id))
+
+        # Pass 2: Positional matching ONLY for items where ID was completely omitted
+        if unresolved_items and len(response_items) == len(requested_ids):
+            for item_idx, item, raw_id in list(unresolved_items):
+                # Only apply positional fallback if raw_id was empty/unspecified
+                if not raw_id:
+                    fallback_req_id = requested_ids[item_idx]
+                    if fallback_req_id in unmapped_req_ids:
+                        t_text = str(item.get("translated_text", "")).strip()
+                        if not t_text:
+                            raise DubStudioError("VALIDATION_ERROR", f"Empty translated_text for segment ID: {fallback_req_id}")
+                        resolved_lookup[fallback_req_id] = item
+                        seen_target_ids.add(fallback_req_id)
+                        unmapped_req_ids.remove(fallback_req_id)
+                        unresolved_items.remove((item_idx, item, raw_id))
+
+        # If any item could not be mapped to any requested ID
+        if unresolved_items:
+            _, _, err_raw_id = unresolved_items[0]
+            raise DubStudioError("VALIDATION_ERROR", f"Unexpected segment ID in provider response: {err_raw_id}")
 
         # Check for missing IDs
-        missing_ids = requested_set - seen_ids
-        if missing_ids:
+        if unmapped_req_ids:
             raise DubStudioError(
                 "VALIDATION_ERROR",
-                f"Provider omitted {len(missing_ids)} segment(s) from response: {list(missing_ids)[:5]}"
+                f"Provider omitted {len(unmapped_req_ids)} segment(s) from response: {list(unmapped_req_ids)[:5]}"
             )
 
-        return lookup
+        return resolved_lookup
+
 
     @staticmethod
     def run_advisory_checks(

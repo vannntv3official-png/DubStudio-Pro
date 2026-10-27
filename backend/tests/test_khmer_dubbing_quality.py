@@ -144,6 +144,33 @@ def test_translation_batch_validator_strict():
         TranslationBatchValidator.validate_batch_structure(requested_ids, duplicate_resp)
 
 
+def test_truncated_uuid_and_alias_resolution():
+    # Real test case from user: LLM drops trailing char from UUID
+    real_uuid_1 = "098fdeb8-0df0-4d8b-995a-80db47213f2d"
+    real_uuid_2 = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    requested_ids = [real_uuid_1, real_uuid_2]
+
+    # Truncated UUID in response (dropped trailing 'd')
+    llm_truncated_resp = [
+        {"id": "098fdeb8-0df0-4d8b-995a-80db47213f2", "translated_text": "សួស្តីប៉ា"},
+        {"id": real_uuid_2, "translated_text": "សុខសប្បាយទេ?"},
+    ]
+    lookup = TranslationBatchValidator.validate_batch_structure(requested_ids, llm_truncated_resp)
+    assert real_uuid_1 in lookup
+    assert lookup[real_uuid_1]["translated_text"] == "សួស្តីប៉ា"
+    assert real_uuid_2 in lookup
+
+    # Short alias ID in response ("seg_1", "seg_2")
+    llm_alias_resp = [
+        {"id": "seg_1", "translated_text": "សួស្តីប៉ា"},
+        {"id": "seg_2", "translated_text": "សុខសប្បាយទេ?"},
+    ]
+    alias_lookup = TranslationBatchValidator.validate_batch_structure(requested_ids, llm_alias_resp)
+    assert real_uuid_1 in alias_lookup
+    assert real_uuid_2 in alias_lookup
+
+
+
 def test_translation_advisory_quality_checks():
     # 1. Check negation flip detection
     # Source has negative 'not', but Khmer translation is missing negative markers
