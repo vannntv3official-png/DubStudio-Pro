@@ -302,6 +302,7 @@ export const TranslationEditor: React.FC = () => {
             label="Gemini Model"
             options={[
               { value: 'gemini-3.5-flash', label: 'gemini-3.5-flash (Recommended - Fast & Accurate)' },
+              { value: 'gemini-3.5-flash-lite', label: 'gemini-3.5-flash-lite (Ultra-Lightweight & Higher Quota)' },
               { value: 'gemini-3.6-flash', label: 'gemini-3.6-flash (Balanced Performance)' },
               { value: 'gemini-3.7-flash', label: 'gemini-3.7-flash (Advanced Reasoning)' },
               { value: 'gemini-3.8-flash', label: 'gemini-3.8-flash (Next-Gen Flagship Flash)' },

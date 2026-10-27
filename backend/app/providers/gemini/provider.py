@@ -12,13 +12,28 @@ from app.providers.base import TranscriptResultItem, TranslationResultItem
 logger = logging.getLogger("dubstudio.providers.gemini")
 
 FALLBACK_CANDIDATES: dict[str, list[str]] = {
-    "gemini-3.5-flash": ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"],
-    "gemini-3.6-flash": ["gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash"],
-    "gemini-3.7-flash": ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash"],
-    "gemini-3.8-flash": ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"],
+    "gemini-3.5-flash": ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite"],
+    "gemini-3.5-flash-lite": ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite"],
+    "gemini-3.6-flash": ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite"],
+    "gemini-3.7-flash": ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"],
+    "gemini-3.8-flash": ["gemini-3.7-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"],
 }
-DEFAULT_FALLBACKS = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
-SUPPORTED_GEMINI_MODELS = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
+DEFAULT_FALLBACKS = [
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+]
+SUPPORTED_GEMINI_MODELS = [
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+]
 
 
 def sanitize_gemini_key(raw_key: str | None) -> str | None:
@@ -280,13 +295,11 @@ class GeminiProvider:
                             key_failed_permanently = True
                             break
 
-                        # If rate limited (429/quota), apply 60s cooldown and rotate to next key immediately
+                        # If rate limited (429/quota on this model), break from attempt loop to try next candidate model (e.g. gemini-3.5-flash-lite)
                         if is_rate_limited:
-                            GeminiProvider._rate_limited_keys[current_key] = time.time() + 60.0
                             logger.warning(
-                                f"Gemini key {masked_key} hit rate limit / quota. Cooldown 60s, rotating to next key..."
+                                f"Gemini key {masked_key} hit rate limit / quota on model '{model_to_try}'. Trying next candidate model..."
                             )
-                            key_failed_permanently = True
                             break
 
                         # If model is unavailable (503) or not found (404), break to try next model on this key
