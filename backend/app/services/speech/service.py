@@ -1,6 +1,9 @@
+import asyncio
 import json
 import logging
+import shutil
 import uuid
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -184,148 +187,202 @@ class SpeechAndAlignmentService:
             trk_res = await session.execute(trk_stmt)
             dub_track = trk_res.scalar_one_or_none()
 
+            # Pre-load all existing takes for the project
+            ex_takes_stmt = select(GeneratedAudioModel).where(
+                GeneratedAudioModel.project_id == project_id
+            )
+            ex_takes_res = await session.execute(ex_takes_stmt)
+            all_existing_takes = ex_takes_res.scalars().all()
+            existing_takes_by_seg: dict[str, list[GeneratedAudioModel]] = defaultdict(list)
+            for et in all_existing_takes:
+                existing_takes_by_seg[et.segment_id].append(et)
+
             # Target segments
             target_t_ids = segment_ids if segment_ids else list(transcripts.keys())
             total = len(target_t_ids)
 
-            generated_list: list[GeneratedAudioModel] = []
-            now = datetime.utcnow()
+            # Run synthesis, revision, and audio processing concurrently (4 parallel workers)
+            concurrency = 4
+            semaphore = asyncio.Semaphore(concurrency)
+            completed_count = 0
+            progress_lock = asyncio.Lock()
 
-            for idx, seg_id in enumerate(target_t_ids):
+            async def process_single_segment(seg_id: str):
+                nonlocal completed_count
                 t_seg = transcripts.get(seg_id)
                 tr_seg = translations.get(seg_id)
                 if not t_seg or not tr_seg:
-                    continue
+                    return None
 
-                if on_progress:
-                    pct = 10.0 + (idx / max(1, total)) * 80.0
-                    on_progress(pct, f"Synthesizing & aligning speech ({idx + 1}/{total})...")
+                async with semaphore:
+                    # Resolve speaker voice
+                    sp = speakers.get(t_seg.speaker_id)
+                    seg_voice = (sp.voice_id if sp and sp.voice_id else voice_id) or voice_id
+                    seg_rate = (sp.rate if sp and sp.rate else rate) or rate
+                    seg_pitch = (sp.pitch if sp and sp.pitch else pitch) or pitch
+                    seg_volume = (sp.volume if sp and sp.volume else volume) or volume
 
-                # Resolve speaker voice
-                sp = speakers.get(t_seg.speaker_id)
-                seg_voice = (sp.voice_id if sp and sp.voice_id else voice_id) or voice_id
-                seg_rate = (sp.rate if sp and sp.rate else rate) or rate
-                seg_pitch = (sp.pitch if sp and sp.pitch else pitch) or pitch
-                seg_volume = (sp.volume if sp and sp.volume else volume) or volume
+                    target_dur_ms = max(400, t_seg.end_ms - t_seg.start_ms)
 
-                target_dur_ms = max(400, t_seg.end_ms - t_seg.start_ms)
+                    # Step 4: Calculate verified available speech window
+                    curr_idx = seg_id_to_idx.get(t_seg.id, -1)
+                    next_t_seg = ordered_transcripts[curr_idx + 1] if 0 <= curr_idx < len(ordered_transcripts) - 1 else None
 
-                # Step 4: Calculate verified available speech window
-                curr_idx = seg_id_to_idx.get(t_seg.id, -1)
-                next_t_seg = ordered_transcripts[curr_idx + 1] if 0 <= curr_idx < len(ordered_transcripts) - 1 else None
+                    if next_t_seg:
+                        gap_ms = max(0, next_t_seg.start_ms - t_seg.end_ms)
+                        allowed_pause = min(max_pause_ms, max(0, gap_ms - 80))
+                    else:
+                        allowed_pause = max_pause_ms
 
-                if next_t_seg:
-                    gap_ms = max(0, next_t_seg.start_ms - t_seg.end_ms)
-                    allowed_pause = min(max_pause_ms, max(0, gap_ms - 80))
-                else:
-                    allowed_pause = max_pause_ms
+                    available_window_ms = target_dur_ms + allowed_pause
 
-                available_window_ms = target_dur_ms + allowed_pause
+                    # Resolve text representations
+                    spoken_script = tr_seg.spoken_script or tr_seg.translated_text
+                    pron_text = tr_seg.pronunciation_text or prepare_khmer_pronunciation(spoken_script, voice_id=seg_voice)
 
-                # Resolve text representations
-                spoken_script = tr_seg.spoken_script or tr_seg.translated_text
-                pron_text = tr_seg.pronunciation_text or prepare_khmer_pronunciation(spoken_script, voice_id=seg_voice)
+                    existing_takes = existing_takes_by_seg.get(t_seg.id, [])
+                    take_number = len(existing_takes) + 1
 
-                # Take management: count existing takes
-                ex_takes_stmt = select(GeneratedAudioModel).where(
-                    GeneratedAudioModel.project_id == project_id,
-                    GeneratedAudioModel.segment_id == t_seg.id,
-                )
-                ex_takes_res = await session.execute(ex_takes_stmt)
-                existing_takes = ex_takes_res.scalars().all()
-                take_number = len(existing_takes) + 1
+                    take_uuid = str(uuid.uuid4())[:8]
+                    raw_take_path = takes_dir / f"take_{t_seg.id}_t{take_number}_{take_uuid}_raw.wav"
+                    aligned_take_path = takes_dir / f"take_{t_seg.id}_t{take_number}_{take_uuid}_aligned.wav"
 
-                take_uuid = str(uuid.uuid4())[:8]
-                raw_take_path = takes_dir / f"take_{t_seg.id}_t{take_number}_{take_uuid}_raw.wav"
-                aligned_take_path = takes_dir / f"take_{t_seg.id}_t{take_number}_{take_uuid}_aligned.wav"
+                    # Step 1 & 2: Synthesize using voice and supported controls
+                    measured_dur_ms = await EdgeTTSProvider.generate_speech(
+                        text=pron_text,
+                        output_path=raw_take_path,
+                        voice_id=seg_voice,
+                        rate=seg_rate,
+                        pitch=seg_pitch,
+                        volume=seg_volume,
+                    )
+                    measured_dur_ms = max(100.0, measured_dur_ms)
 
-                # Step 1 & 2: Synthesize using voice and supported controls
-                measured_dur_ms = await EdgeTTSProvider.generate_speech(
-                    text=pron_text,
-                    output_path=raw_take_path,
-                    voice_id=seg_voice,
-                    rate=seg_rate,
-                    pitch=seg_pitch,
-                    volume=seg_volume,
-                )
-                measured_dur_ms = max(100.0, measured_dur_ms)
+                    # Step 5 & 6: Bounded Script Revision Loop (Max 2 attempts)
+                    revision_attempts = 0
+                    review_reasons: list[str] = list(tr_seg.review_reasons or [])
 
-                # Step 5 & 6: Bounded Script Revision Loop (Max 2 attempts)
-                revision_attempts = 0
-                review_reasons: list[str] = list(tr_seg.review_reasons or [])
+                    if (
+                        measured_dur_ms > available_window_ms * max_tempo
+                        and not tr_seg.is_manually_edited
+                        and tr_seg.approval_status != "approved"
+                    ):
+                        for attempt in range(1, 3):
+                            revision_attempts = attempt
+                            async with GlobalAsyncSessionLocal() as g_sess:
+                                revised = await SpeechAndAlignmentService._revise_spoken_script_with_llm(
+                                    current_script=spoken_script,
+                                    target_window_sec=available_window_ms / 1000.0,
+                                    measured_sec=measured_dur_ms / 1000.0,
+                                    source_text=t_seg.text,
+                                    g_session=g_sess,
+                                )
 
-                if (
-                    measured_dur_ms > available_window_ms * max_tempo
-                    and not tr_seg.is_manually_edited
-                    and tr_seg.approval_status != "approved"
-                ):
-                    for attempt in range(1, 3):
-                        revision_attempts = attempt
-                        async with GlobalAsyncSessionLocal() as g_sess:
-                            revised = await SpeechAndAlignmentService._revise_spoken_script_with_llm(
-                                current_script=spoken_script,
-                                target_window_sec=available_window_ms / 1000.0,
-                                measured_sec=measured_dur_ms / 1000.0,
-                                source_text=t_seg.text,
-                                g_session=g_sess,
-                            )
+                            if revised and revised != spoken_script:
+                                rev_pron = prepare_khmer_pronunciation(revised, voice_id=seg_voice)
+                                candidate_path = takes_dir / f"take_{t_seg.id}_t{take_number}_rev{attempt}_{take_uuid}.wav"
+                                candidate_dur = await EdgeTTSProvider.generate_speech(
+                                    text=rev_pron,
+                                    output_path=candidate_path,
+                                    voice_id=seg_voice,
+                                    rate=seg_rate,
+                                    pitch=seg_pitch,
+                                    volume=seg_volume,
+                                )
+                                # Step 7: Retain candidate only if measured timing improves
+                                if candidate_dur < measured_dur_ms:
+                                    spoken_script = revised
+                                    pron_text = rev_pron
+                                    raw_take_path = candidate_path
+                                    measured_dur_ms = candidate_dur
+                                    if measured_dur_ms <= available_window_ms * max_tempo:
+                                        break
 
-                        if revised and revised != spoken_script:
-                            rev_pron = prepare_khmer_pronunciation(revised, voice_id=seg_voice)
-                            candidate_path = takes_dir / f"take_{t_seg.id}_t{take_number}_rev{attempt}_{take_uuid}.wav"
-                            candidate_dur = await EdgeTTSProvider.generate_speech(
-                                text=rev_pron,
-                                output_path=candidate_path,
-                                voice_id=seg_voice,
-                                rate=seg_rate,
-                                pitch=seg_pitch,
-                                volume=seg_volume,
-                            )
-                            # Step 7: Retain candidate only if measured timing improves
-                            if candidate_dur < measured_dur_ms:
-                                spoken_script = revised
-                                pron_text = rev_pron
-                                raw_take_path = candidate_path
-                                measured_dur_ms = candidate_dur
-                                tr_seg.spoken_script = revised
-                                tr_seg.pronunciation_text = rev_pron
-                                if measured_dur_ms <= available_window_ms * max_tempo:
-                                    break
+                    # Step 8: Apply bounded pitch-preserving tempo adjustment (atempo)
+                    if measured_dur_ms <= available_window_ms:
+                        tempo_factor = 1.0
+                    else:
+                        tempo_factor = min(max_tempo, measured_dur_ms / available_window_ms)
 
-                # Step 8: Apply bounded pitch-preserving tempo adjustment (atempo)
-                if measured_dur_ms <= available_window_ms:
-                    tempo_factor = 1.0
-                else:
-                    tempo_factor = min(max_tempo, measured_dur_ms / available_window_ms)
+                    # Fast-path: if tempo_factor is 1.0, bypass secondary FFmpeg process and copy directly
+                    if abs(tempo_factor - 1.0) < 0.01:
+                        shutil.copy2(raw_take_path, aligned_take_path)
+                    else:
+                        await adjust_audio_speed_and_pad(
+                            input_audio_path=raw_take_path,
+                            output_audio_path=aligned_take_path,
+                            speed_factor=round(tempo_factor, 2),
+                            target_duration_ms=None,  # NEVER truncate dialogue
+                            allow_truncation=False,
+                        )
 
-                await adjust_audio_speed_and_pad(
-                    input_audio_path=raw_take_path,
-                    output_audio_path=aligned_take_path,
-                    speed_factor=round(tempo_factor, 2),
-                    target_duration_ms=None,  # NEVER truncate dialogue
-                    allow_truncation=False,
-                )
+                    # Step 9: Measure processed output again
+                    final_dur_ms = EdgeTTSProvider.get_audio_duration_ms(aligned_take_path)
 
-                # Step 9: Measure processed output again
-                final_dur_ms = EdgeTTSProvider.get_audio_duration_ms(aligned_take_path)
+                    # Step 10: Flag unresolved problems for review
+                    review_status = "generated"
+                    if final_dur_ms > available_window_ms + 60:
+                        if "timing_overrun" not in review_reasons:
+                            review_reasons.append("timing_overrun")
+                        review_status = "needs_review"
+                    elif final_dur_ms < target_dur_ms * 0.55 and target_dur_ms > 2000:
+                        if "timing_underrun" not in review_reasons:
+                            review_reasons.append("timing_underrun")
+                        review_status = "needs_review"
 
-                # Step 10: Flag unresolved problems for review
-                review_status = "generated"
-                if final_dur_ms > available_window_ms + 60:
-                    if "timing_overrun" not in review_reasons:
-                        review_reasons.append("timing_overrun")
-                    review_status = "needs_review"
-                elif final_dur_ms < target_dur_ms * 0.55 and target_dur_ms > 2000:
-                    if "timing_underrun" not in review_reasons:
-                        review_reasons.append("timing_underrun")
-                    review_status = "needs_review"
+                    async with progress_lock:
+                        completed_count += 1
+                        if on_progress:
+                            pct = 10.0 + (completed_count / max(1, total)) * 80.0
+                            on_progress(pct, f"Synthesized speech ({completed_count}/{total})...")
 
-                # Update translation approval status
+                    return {
+                        "t_seg": t_seg,
+                        "tr_seg": tr_seg,
+                        "next_t_seg": next_t_seg,
+                        "existing_takes": existing_takes,
+                        "target_dur_ms": target_dur_ms,
+                        "available_window_ms": available_window_ms,
+                        "measured_dur_ms": measured_dur_ms,
+                        "final_dur_ms": final_dur_ms,
+                        "tempo_factor": tempo_factor,
+                        "spoken_script": spoken_script,
+                        "pron_text": pron_text,
+                        "raw_take_path": raw_take_path,
+                        "aligned_take_path": aligned_take_path,
+                        "take_number": take_number,
+                        "review_status": review_status,
+                        "review_reasons": review_reasons,
+                        "revision_attempts": revision_attempts,
+                        "seg_voice": seg_voice,
+                    }
+
+            # Execute all segment audio generation in parallel with bounded concurrency
+            raw_results = await asyncio.gather(*(process_single_segment(sid) for sid in target_t_ids))
+            results = [r for r in raw_results if r is not None]
+
+            generated_list: list[GeneratedAudioModel] = []
+            now = datetime.utcnow()
+
+            # Apply batch database updates in chronological order
+            for res in results:
+                t_seg = res["t_seg"]
+                tr_seg = res["tr_seg"]
+                next_t_seg = res["next_t_seg"]
+                final_dur_ms = res["final_dur_ms"]
+                spoken_script = res["spoken_script"]
+                pron_text = res["pron_text"]
+                review_status = res["review_status"]
+                review_reasons = res["review_reasons"]
+
+                # Update translation segment
+                tr_seg.spoken_script = spoken_script
+                tr_seg.pronunciation_text = pron_text
                 tr_seg.approval_status = review_status if tr_seg.approval_status != "approved" else "approved"
                 tr_seg.review_reasons = review_reasons
 
                 # Preserve takes: mark older takes as not current
-                for ex_take in existing_takes:
+                for ex_take in res["existing_takes"]:
                     ex_take.is_current = False
 
                 gen_model = GeneratedAudioModel(
@@ -333,23 +390,23 @@ class SpeechAndAlignmentService:
                     project_id=project_id,
                     segment_id=t_seg.id,
                     translation_id=tr_seg.id,
-                    voice_id=seg_voice,
-                    original_duration_ms=target_dur_ms,
-                    raw_duration_ms=int(measured_dur_ms),
-                    measured_duration_ms=int(measured_dur_ms),
+                    voice_id=res["seg_voice"],
+                    original_duration_ms=res["target_dur_ms"],
+                    raw_duration_ms=int(res["measured_dur_ms"]),
+                    measured_duration_ms=int(res["measured_dur_ms"]),
                     aligned_duration_ms=int(final_dur_ms),
-                    timing_budget_ms=int(available_window_ms),
-                    speed_factor=round(tempo_factor, 2),
-                    tempo_factor=round(tempo_factor, 2),
-                    audio_path=str(raw_take_path.resolve()),
-                    aligned_audio_path=str(aligned_take_path.resolve()),
+                    timing_budget_ms=int(res["available_window_ms"]),
+                    speed_factor=round(res["tempo_factor"], 2),
+                    tempo_factor=round(res["tempo_factor"], 2),
+                    audio_path=str(res["raw_take_path"].resolve()),
+                    aligned_audio_path=str(res["aligned_take_path"].resolve()),
                     sync_mode=chosen_sync_mode,
                     status="aligned",
-                    take_number=take_number,
+                    take_number=res["take_number"],
                     is_current=True,
                     review_status=review_status,
                     review_reasons=review_reasons,
-                    revision_attempts=revision_attempts,
+                    revision_attempts=res["revision_attempts"],
                     pronunciation_text_used=pron_text,
                     stale=False,
                     created_at=now,

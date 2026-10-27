@@ -210,13 +210,14 @@ class EdgeTTSProvider:
                 estimated_duration_ms = max(800, min(10000, word_count * 320))
                 return await EdgeTTSProvider._generate_silence(output_path, estimated_duration_ms)
 
-        # Convert MP3 to 24kHz mono PCM WAV with Broadcast Studio Vocal Processing
+        # Convert MP3 to 24kHz mono PCM WAV with Broadcast Studio Vocal Processing & anti-pop fade
         vocal_filters = [
             "highpass=f=75",
             "equalizer=f=220:t=q:w=1.2:g=1.8",
             "equalizer=f=3600:t=q:w=1.4:g=2.2",
             "acompressor=threshold=-16dB:ratio=2.8:attack=8:release=60:makeup=1.5",
             "alimiter=limit=0.96",
+            "afade=t=in:ss=0:d=0.015",
         ]
         cmd = [
             FFMPEG_BIN,
