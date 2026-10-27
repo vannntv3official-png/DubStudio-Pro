@@ -204,7 +204,10 @@ export const TranslationEditor: React.FC = () => {
       setCurrentTimeMs(startMs);
     }
 
-    const streamUrl = api.getMediaStreamUrl(audioPath);
+    const isElectron = typeof window !== 'undefined' && Boolean((window as any).dubstudio);
+    const streamUrl = isElectron
+      ? `media://local/${encodeURIComponent(audioPath.replace(/\\/g, '/'))}`
+      : api.getMediaStreamUrl(audioPath);
     const audio = new Audio(streamUrl);
     audioRef.current = audio;
     setPlayingSegId(segId);

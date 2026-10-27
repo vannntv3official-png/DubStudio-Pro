@@ -43,9 +43,13 @@ export const VoiceLibrary: React.FC = () => {
       const audio = new Audio(audioUrl);
       setCurrentAudio(audio);
       audio.onended = () => setPlayingVoiceId(null);
-      await audio.play();
+      audio.play().catch((err) => {
+        if (err.name !== 'AbortError') console.warn('Preview play error:', err);
+      });
     } catch (e: any) {
-      alert(`Voice preview failed: ${e.message}`);
+      if (e.name !== 'AbortError') {
+        alert(`Voice preview failed: ${e.message}`);
+      }
       setPlayingVoiceId(null);
     }
   };

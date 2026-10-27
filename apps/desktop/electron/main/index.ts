@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';
 import { pathToFileURL } from 'url';
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import { createMainWindow } from './window';
 import { backendManager } from './backend-manager';
 import { registerDialogIpc } from './ipc/dialogs';
@@ -36,7 +37,7 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
-    // Register media handler for local video/audio streaming with byte ranges
+    // Register media handler for local video/audio streaming with high-performance HTTP 206 byte ranges
     protocol.handle('media', (request) => {
       try {
         const url = new URL(request.url);
@@ -53,7 +54,57 @@ if (!gotTheLock) {
           console.warn('[MediaProtocol] Media file not found on disk:', filePath);
           return new Response('Media file not found', { status: 404 });
         }
-        return net.fetch(pathToFileURL(filePath).toString());
+
+        const stat = fs.statSync(filePath);
+        const fileSize = stat.size;
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes: Record<string, string> = {
+          '.mp4': 'video/mp4',
+          '.webm': 'video/webm',
+          '.mov': 'video/quicktime',
+          '.mkv': 'video/x-matroska',
+          '.avi': 'video/x-msvideo',
+          '.mp3': 'audio/mpeg',
+          '.wav': 'audio/wav',
+          '.m4a': 'audio/mp4',
+          '.aac': 'audio/aac',
+          '.ogg': 'audio/ogg',
+        };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        const rangeHeader = request.headers.get('range');
+
+        if (rangeHeader) {
+          const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+          if (match) {
+            const start = parseInt(match[1], 10);
+            const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+            const chunkSize = end - start + 1;
+            const nodeStream = fs.createReadStream(filePath, { start, end });
+            const webStream = (Readable as any).toWeb(nodeStream);
+
+            return new Response(webStream, {
+              status: 206,
+              statusText: 'Partial Content',
+              headers: {
+                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': chunkSize.toString(),
+                'Content-Type': contentType,
+              },
+            });
+          }
+        }
+
+        const nodeStream = fs.createReadStream(filePath);
+        const webStream = (Readable as any).toWeb(nodeStream);
+        return new Response(webStream, {
+          status: 200,
+          headers: {
+            'Accept-Ranges': 'bytes',
+            'Content-Length': fileSize.toString(),
+            'Content-Type': contentType,
+          },
+        });
       } catch (e) {
         console.error('[MediaProtocol] Failed to serve media file:', e);
         return new Response('Media file error', { status: 500 });

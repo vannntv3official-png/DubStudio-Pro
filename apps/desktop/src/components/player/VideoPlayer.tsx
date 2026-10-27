@@ -31,8 +31,11 @@ type AspectRatioMode = 'fit' | '16:9' | '9:16' | '1:1';
 export const VideoPlayer: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const dubbedAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastVideoReportedTimeMs = useRef<number>(0);
+  const audioCache = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const currentPlayingClipId = useRef<string | null>(null);
+  const lastSyncTimeRef = useRef<number>(0);
 
   const { mediaAssets, importMediaFile, currentProject } = useProjectStore();
   const {
@@ -119,24 +122,40 @@ export const VideoPlayer: React.FC = () => {
       }[];
   }, [generatedAudios, segments]);
 
+  const getAudioUrl = (filePath: string): string => {
+    if (isElectron && filePath) {
+      return `media://local/${encodeURIComponent(filePath.replace(/\\/g, '/'))}`;
+    }
+    return api.getMediaStreamUrl(filePath);
+  };
+
   // Synchronize playback state
   useEffect(() => {
     if (!videoRef.current) return;
     if (isPlaying) {
-      videoRef.current.play().catch(() => {});
+      videoRef.current.play().catch((err) => {
+        if (err.name !== 'AbortError') console.warn('[VideoPlayer] Video play error:', err);
+      });
+      if (activeAudioRef.current && activeAudioRef.current.paused) {
+        activeAudioRef.current.play().catch((err) => {
+          if (err.name !== 'AbortError') console.warn('[AudioPlayer] Audio play error:', err);
+        });
+      }
     } else {
       videoRef.current.pause();
-      if (dubbedAudioRef.current) {
-        dubbedAudioRef.current.pause();
+      if (activeAudioRef.current && !activeAudioRef.current.paused) {
+        activeAudioRef.current.pause();
       }
     }
   }, [isPlaying]);
 
-  // Synchronize seek position
+  // Synchronize seek position without interrupting natural playback buffer
   useEffect(() => {
     if (!videoRef.current) return;
-    const currentVideoTimeMs = videoRef.current.currentTime * 1000;
-    if (Math.abs(currentVideoTimeMs - currentTimeMs) > 150) {
+    // Only seek video if the time change was external (scrubber, timeline click, frame step)
+    // and not from the video element's own timeupdate event!
+    if (Math.abs(currentTimeMs - lastVideoReportedTimeMs.current) > 120) {
+      lastVideoReportedTimeMs.current = currentTimeMs;
       videoRef.current.currentTime = currentTimeMs / 1000;
     }
   }, [currentTimeMs]);
@@ -144,8 +163,8 @@ export const VideoPlayer: React.FC = () => {
   // Real-time Multitrack Audio Engine (Synchronizes Dubbed Voice & Auto-Ducking)
   useEffect(() => {
     if (!dubbedAudioEnabled || dubbedClips.length === 0) {
-      if (dubbedAudioRef.current) {
-        dubbedAudioRef.current.pause();
+      if (activeAudioRef.current) {
+        activeAudioRef.current.pause();
         currentPlayingClipId.current = null;
       }
       setIsDuckingActive(false);
@@ -164,40 +183,109 @@ export const VideoPlayer: React.FC = () => {
       const targetVol = isMuted ? 0 : Math.min(1.0, dubbedMasterVol * volume);
 
       if (currentPlayingClipId.current !== activeClip.id) {
-        if (!dubbedAudioRef.current) {
-          dubbedAudioRef.current = new Audio();
+        // Pause previous audio clip smoothly
+        if (activeAudioRef.current && !activeAudioRef.current.paused) {
+          activeAudioRef.current.pause();
         }
+
+        let audio = audioCache.current.get(activeClip.id);
+        if (!audio) {
+          audio = new Audio(getAudioUrl(activeClip.audioPath));
+          audio.preload = 'auto';
+          audioCache.current.set(activeClip.id, audio);
+        }
+
+        activeAudioRef.current = audio;
         currentPlayingClipId.current = activeClip.id;
-        const streamUrl = api.getMediaStreamUrl(activeClip.audioPath);
-        dubbedAudioRef.current.src = streamUrl;
-        dubbedAudioRef.current.currentTime = targetOffsetSec;
-        dubbedAudioRef.current.playbackRate = playbackRate;
-        dubbedAudioRef.current.volume = targetVol;
 
-        if (isPlaying) {
-          dubbedAudioRef.current.play().catch(() => {});
-        }
-      } else if (dubbedAudioRef.current) {
-        // Adjust for any timing drift
-        if (Math.abs(dubbedAudioRef.current.currentTime - targetOffsetSec) > 0.25) {
-          dubbedAudioRef.current.currentTime = targetOffsetSec;
-        }
-        dubbedAudioRef.current.playbackRate = playbackRate;
-        dubbedAudioRef.current.volume = targetVol;
+        audio.playbackRate = playbackRate;
+        audio.volume = targetVol;
 
-        if (isPlaying && dubbedAudioRef.current.paused) {
-          dubbedAudioRef.current.play().catch(() => {});
+        const startPlayback = () => {
+          if (audio.readyState >= 1) {
+            audio.currentTime = targetOffsetSec;
+          }
+          if (isPlaying) {
+            audio.play().catch((err) => {
+              if (err.name !== 'AbortError') console.warn('[AudioPlayer] Play error:', err);
+            });
+          }
+        };
+
+        if (audio.readyState >= 1) {
+          startPlayback();
+        } else {
+          audio.addEventListener('loadedmetadata', startPlayback, { once: true });
+        }
+
+        // Lookahead: Preload upcoming clip into memory
+        const nextClip = dubbedClips.find((c) => c.startMs > activeClip.startMs);
+        if (nextClip && !audioCache.current.has(nextClip.id)) {
+          const preAudio = new Audio(getAudioUrl(nextClip.audioPath));
+          preAudio.preload = 'auto';
+          audioCache.current.set(nextClip.id, preAudio);
+        }
+
+        // Cache eviction to keep memory lightweight in long videos
+        if (audioCache.current.size > 30) {
+          for (const [key, cachedAudio] of audioCache.current.entries()) {
+            if (key !== activeClip.id && cachedAudio !== activeAudioRef.current) {
+              cachedAudio.pause();
+              cachedAudio.src = '';
+              audioCache.current.delete(key);
+              if (audioCache.current.size <= 20) break;
+            }
+          }
+        }
+      } else if (activeAudioRef.current) {
+        // Currently playing clip: maintain parameters
+        activeAudioRef.current.playbackRate = playbackRate;
+        activeAudioRef.current.volume = targetVol;
+
+        if (isPlaying && activeAudioRef.current.paused) {
+          activeAudioRef.current.play().catch((err) => {
+            if (err.name !== 'AbortError') console.warn('[AudioPlayer] Play error:', err);
+          });
+        }
+
+        // Rate-limited drift correction (at most once every 800ms)
+        const now = Date.now();
+        if (now - lastSyncTimeRef.current > 800 && activeAudioRef.current.readyState >= 2) {
+          const drift = Math.abs(activeAudioRef.current.currentTime - targetOffsetSec);
+          if (drift > 0.35) {
+            activeAudioRef.current.currentTime = targetOffsetSec;
+            lastSyncTimeRef.current = now;
+          }
         }
       }
     } else {
       // In silent inter-segment pause
       setIsDuckingActive(false);
-      if (dubbedAudioRef.current && !dubbedAudioRef.current.paused) {
-        dubbedAudioRef.current.pause();
+      if (activeAudioRef.current && !activeAudioRef.current.paused) {
+        activeAudioRef.current.pause();
       }
       currentPlayingClipId.current = null;
+
+      // Lookahead: Preload upcoming clip if within 4 seconds
+      const upcomingClip = dubbedClips.find(
+        (c) => c.startMs >= currentTimeMs && c.startMs <= currentTimeMs + 4000
+      );
+      if (upcomingClip && !audioCache.current.has(upcomingClip.id)) {
+        const preAudio = new Audio(getAudioUrl(upcomingClip.audioPath));
+        preAudio.preload = 'auto';
+        audioCache.current.set(upcomingClip.id, preAudio);
+      }
     }
-  }, [currentTimeMs, isPlaying, dubbedClips, dubbedAudioEnabled, isMuted, volume, playbackRate, currentProject?.audioSettings]);
+  }, [
+    currentTimeMs,
+    isPlaying,
+    dubbedClips,
+    dubbedAudioEnabled,
+    isMuted,
+    volume,
+    playbackRate,
+    currentProject?.audioSettings,
+  ]);
 
   // Volume & rate for primary video audio (with auto-ducking)
   useEffect(() => {
@@ -213,16 +301,23 @@ export const VideoPlayer: React.FC = () => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (dubbedAudioRef.current) {
-        dubbedAudioRef.current.pause();
-        dubbedAudioRef.current = null;
+      if (activeAudioRef.current) {
+        activeAudioRef.current.pause();
+        activeAudioRef.current = null;
       }
+      audioCache.current.forEach((audio) => {
+        audio.pause();
+        audio.src = '';
+      });
+      audioCache.current.clear();
     };
   }, []);
 
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
-    setCurrentTimeMs(videoRef.current.currentTime * 1000);
+    const vTime = videoRef.current.currentTime * 1000;
+    lastVideoReportedTimeMs.current = vTime;
+    setCurrentTimeMs(vTime);
   };
 
   const handleLoadedMetadata = () => {

@@ -213,6 +213,7 @@ async def stream_media_asset(media_id: str):
                         path=file_path,
                         media_type=mime_type,
                         filename=asset.filename,
+                        headers={"Accept-Ranges": "bytes"},
                     )
         except Exception:
             continue
@@ -238,4 +239,4 @@ async def stream_media_by_path(path: str):
         mime_type = "audio/mpeg"
     elif ext == ".wav":
         mime_type = "audio/wav"
-    return FileResponse(path=p, media_type=mime_type, filename=p.name)
+    return FileResponse(path=p, media_type=mime_type, filename=p.name, headers={"Accept-Ranges": "bytes"})
