@@ -7,7 +7,9 @@ class JobEventService {
   private listeners: Set<JobListener> = new Set();
 
   public start(backendBaseUrl = 'http://127.0.0.1:8765/api/v1', token?: string): void {
-    if (this.eventSource) return;
+    if (this.eventSource) {
+      this.stop();
+    }
 
     try {
       const url = token

@@ -25,6 +25,13 @@ const dubstudioApi: DesktopIPCBridge = {
       ipcRenderer.removeListener('backend:crash', handler);
     };
   },
+  onBackendRestarted: (callback: (info: any) => void) => {
+    const handler = (_event: any, info: any) => callback(info);
+    ipcRenderer.on('backend:restarted', handler);
+    return () => {
+      ipcRenderer.removeListener('backend:restarted', handler);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('dubstudio', dubstudioApi);

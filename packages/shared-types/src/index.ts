@@ -370,6 +370,7 @@ export interface DesktopIPCBridge {
   getSystemInfo: () => Promise<{ os: string; platform: string; arch: string }>;
   onJobUpdate: (callback: (job: ProcessingJob) => void) => () => void;
   onBackendCrash: (callback: (error: string) => void) => () => void;
+  onBackendRestarted?: (callback: (info: { port: number; token: string; host: string }) => void) => () => void;
 }
 
 declare global {

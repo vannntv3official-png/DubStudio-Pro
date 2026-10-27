@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, Integer, Float, DateTime, Text, Boolean, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database.session import Base
@@ -31,5 +31,5 @@ class GeneratedAudioModel(Base):
     revision_attempts: Mapped[int] = mapped_column(Integer, default=0)
     pronunciation_text_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     stale: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 

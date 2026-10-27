@@ -240,6 +240,11 @@ class EdgeTTSProvider:
         if temp_mp3.exists():
             temp_mp3.unlink()
 
+        # Verify output exists and is valid; fallback to silence if conversion failed
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            logger.warning(f"FFmpeg conversion failed or produced empty file for {output_path}. Generating silence fallback...")
+            return await EdgeTTSProvider._generate_silence(output_path, 1000)
+
         # Read exact duration
         duration_ms = EdgeTTSProvider.get_audio_duration_ms(output_path)
         return duration_ms

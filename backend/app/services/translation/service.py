@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from sqlalchemy import select
 from app.database.session import get_project_engine, GlobalAsyncSessionLocal
@@ -145,7 +145,7 @@ class TranslationService:
             if on_progress:
                 on_progress(80.0, "Updating project translations & phonetic preparation...")
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             all_translations = []
 
             for t in transcripts:
@@ -302,7 +302,7 @@ class TranslationService:
                 t.status = data.status
 
             t.is_manually_edited = data.is_manually_edited
-            t.updated_at = datetime.utcnow()
+            t.updated_at = datetime.now(timezone.utc)
 
             # Mark existing generated audios as stale if text was modified
             from app.models.voice import GeneratedAudioModel

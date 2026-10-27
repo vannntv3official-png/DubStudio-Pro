@@ -1,6 +1,6 @@
 import uuid
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, status
 from starlette.responses import FileResponse
@@ -57,7 +57,7 @@ async def import_media(req: MediaImportRequest):
 
     # Save MediaAssetModel
     asset_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     rel_path = make_project_relative(project_dir, dest_video_path)
 
     async with session_maker() as session:

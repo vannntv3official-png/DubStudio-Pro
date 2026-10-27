@@ -26,6 +26,13 @@ export function getAuthToken(): string {
   return authToken;
 }
 
+export function updateBackendConnection(host: string, port: number, token: string): void {
+  backendUrl = `http://${host}:${port}/api/v1`;
+  authToken = token;
+  isConnected = true;
+  console.log(`[API Client] Updated backend connection to ${backendUrl}`);
+}
+
 export async function initBackendConnection(): Promise<void> {
   if (connectionPromise) return connectionPromise;
   connectionPromise = (async () => {

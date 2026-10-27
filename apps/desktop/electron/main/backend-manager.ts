@@ -17,6 +17,11 @@ export class BackendManager {
   private host: string = '127.0.0.1';
   private token: string = crypto.randomUUID();
   private isShuttingDown: boolean = false;
+  private onRestartCallback: ((info: BackendConnectionInfo) => void) | null = null;
+
+  public onRestart(cb: (info: BackendConnectionInfo) => void): void {
+    this.onRestartCallback = cb;
+  }
 
   public async getAvailablePort(): Promise<number> {
     return new Promise((resolve, reject) => {
@@ -94,7 +99,16 @@ export class BackendManager {
       this.process = null;
       if (!this.isShuttingDown) {
         console.log('[BackendManager] Unexpected crash, restarting backend...');
-        setTimeout(() => this.start(), 2000);
+        setTimeout(async () => {
+          try {
+            const info = await this.start();
+            if (this.onRestartCallback) {
+              this.onRestartCallback(info);
+            }
+          } catch (e) {
+            console.error('[BackendManager] Failed to restart backend process:', e);
+          }
+        }, 2000);
       }
     });
 

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, Boolean, DateTime, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database.session import Base
@@ -27,6 +27,6 @@ class TranslationSegmentModel(Base):
     form_of_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     dubbing_register: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_manually_edited: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

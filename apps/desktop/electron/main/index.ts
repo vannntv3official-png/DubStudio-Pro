@@ -70,6 +70,13 @@ if (!gotTheLock) {
     mainWindow = createMainWindow();
     registerDialogIpc(mainWindow);
 
+    backendManager.onRestart((info) => {
+      console.log('[Electron Main] Backend restarted, broadcasting new info to renderer:', info);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('backend:restarted', info);
+      }
+    });
+
     // Provide backend credentials to renderer upon request
     ipcMain.handle('backend:get-info', async () => {
       return backendManager.getConnectionInfo();

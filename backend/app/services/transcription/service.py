@@ -1,7 +1,7 @@
 import re
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from sqlalchemy import select, delete
 from app.database.session import get_project_engine
@@ -171,7 +171,7 @@ class TranscriptionService:
             await session.execute(delete(TranscriptSegmentModel).where(TranscriptSegmentModel.project_id == project_id))
 
             created_segments = []
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             for r in results:
                 seg = TranscriptSegmentModel(
                     id=str(uuid.uuid4()),
@@ -270,7 +270,7 @@ class TranscriptionService:
             seg.end_ms = req.splitTimeMs
             seg.text = first_text
             seg.status = "edited"
-            seg.updated_at = datetime.utcnow()
+            seg.updated_at = datetime.now(timezone.utc)
 
             new_seg = TranscriptSegmentModel(
                 id=str(uuid.uuid4()),
@@ -281,8 +281,8 @@ class TranscriptionService:
                 speaker_id=seg.speaker_id,
                 language=seg.language,
                 status="edited",
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             )
             session.add(new_seg)
             await session.commit()
@@ -312,7 +312,7 @@ class TranscriptionService:
             first.end_ms = last.end_ms
             first.text = merged_text
             first.status = "edited"
-            first.updated_at = datetime.utcnow()
+            first.updated_at = datetime.now(timezone.utc)
 
             for s in segments[1:]:
                 await session.delete(s)

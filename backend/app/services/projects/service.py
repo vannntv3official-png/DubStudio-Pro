@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +44,7 @@ class ProjectService:
         await init_project_db(project_dir)
         _, session_maker = get_project_engine(project_dir)
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         model = ProjectModel(
             id=project_id,
             name=data.name,
@@ -126,7 +126,7 @@ class ProjectService:
             p = await session.get(ProjectModel, project_id)
             if not p:
                 return None
-            p.last_opened_at = datetime.utcnow()
+            p.last_opened_at = datetime.now(timezone.utc)
             await session.commit()
             return ProjectResponse.model_validate(p)
 
@@ -152,7 +152,7 @@ class ProjectService:
             if data.subtitle_style is not None:
                 p.subtitle_style = data.subtitle_style.model_dump()
 
-            p.updated_at = datetime.utcnow()
+            p.updated_at = datetime.now(timezone.utc)
             await session.commit()
             await session.refresh(p)
 

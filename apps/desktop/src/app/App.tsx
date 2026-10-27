@@ -17,7 +17,7 @@ import { useTranscriptStore } from '@/stores/transcriptStore';
 import { useTranslationStore } from '@/stores/translationStore';
 import { useSubtitleStore } from '@/stores/subtitleStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { initBackendConnection, getBackendUrl, getAuthToken, api } from '@/services/api';
+import { initBackendConnection, updateBackendConnection, getBackendUrl, getAuthToken, api } from '@/services/api';
 import { jobEventService } from '@/services/sse';
 
 export const App: React.FC = () => {
@@ -56,7 +56,18 @@ export const App: React.FC = () => {
         }
       });
 
+      // Listen for backend restart events from Electron
+      let unsubRestart: (() => void) | undefined;
+      if (typeof window !== 'undefined' && window.dubstudio?.onBackendRestarted) {
+        unsubRestart = window.dubstudio.onBackendRestarted((info) => {
+          console.log('[App] Received backend restart event:', info);
+          updateBackendConnection(info.host, info.port, info.token);
+          jobEventService.start(getBackendUrl(), getAuthToken());
+        });
+      }
+
       return () => {
+        if (unsubRestart) unsubRestart();
         unsubscribe();
         jobEventService.stop();
       };

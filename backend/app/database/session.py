@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from collections.abc import AsyncGenerator
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
@@ -10,12 +11,26 @@ class Base(DeclarativeBase):
     pass
 
 
+def _configure_sqlite_pragmas(dbapi_connection, connection_record):
+    """Enable WAL mode, synchronous=NORMAL, and 30s busy timeout for high concurrency."""
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode = WAL")
+        cursor.execute("PRAGMA synchronous = NORMAL")
+        cursor.execute("PRAGMA busy_timeout = 30000")
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.close()
+    except Exception:
+        pass
+
+
 # Global engine for app settings, recent projects, etc.
 global_engine = create_async_engine(
     settings.GLOBAL_DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 30.0},
 )
+event.listen(global_engine.sync_engine, "connect", _configure_sqlite_pragmas)
 
 GlobalAsyncSessionLocal = async_sessionmaker(
     bind=global_engine,
@@ -36,8 +51,9 @@ def get_project_engine(project_dir: Path):
         engine = create_async_engine(
             db_url,
             echo=False,
-            connect_args={"check_same_thread": False},
+            connect_args={"check_same_thread": False, "timeout": 30.0},
         )
+        event.listen(engine.sync_engine, "connect", _configure_sqlite_pragmas)
         _project_engines[path_str] = engine
         _project_session_makers[path_str] = async_sessionmaker(
             bind=engine,
