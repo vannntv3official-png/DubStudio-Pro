@@ -15,7 +15,7 @@ class TranslationSegmentCreate(BaseModel):
     source_language: str = "en"
     target_language: str = "km"
     provider: str = "gemini"
-    model: str = "gemini-2.5-flash"
+    model: str = "gemini-3.5-flash"
     approval_status: str = "draft"
     review_reasons: list[str] | None = None
     context_notes: str | None = None

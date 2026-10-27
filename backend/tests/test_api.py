@@ -93,14 +93,14 @@ async def test_project_lifecycle():
                 "accentColor": "#3B82F6",
                 "aiProviders": {
                     "geminiApiKey": "dummy_test_key",
-                    "geminiModel": "gemini-2.5-flash",
+                    "geminiModel": "gemini-3.5-flash",
                 },
             },
         )
         assert settings_update_resp.status_code == 200
         saved_settings = settings_update_resp.json()
         assert saved_settings["aiProviders"]["geminiApiKey"] == "dummy_test_key"
-        assert saved_settings["aiProviders"]["geminiModel"] == "gemini-2.5-flash"
+        assert saved_settings["aiProviders"]["geminiModel"] == "gemini-3.5-flash"
 
         # Restore original settings so tests do not pollute user's active database
         await ac.put("/api/v1/settings", headers=headers, json=orig_settings)

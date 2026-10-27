@@ -12,12 +12,13 @@ from app.providers.base import TranscriptResultItem, TranslationResultItem
 logger = logging.getLogger("dubstudio.providers.gemini")
 
 FALLBACK_CANDIDATES: dict[str, list[str]] = {
-    "gemini-3.8-flash": ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"],
-    "gemini-2.5-flash": ["gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
-    "gemini-2.5-pro": ["gemini-2.5-flash", "gemini-flash-latest"],
-    "gemini-flash-latest": ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+    "gemini-3.5-flash": ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"],
+    "gemini-3.6-flash": ["gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash"],
+    "gemini-3.7-flash": ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash"],
+    "gemini-3.8-flash": ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"],
 }
-DEFAULT_FALLBACKS = ["gemini-2.5-flash", "gemini-flash-latest"]
+DEFAULT_FALLBACKS = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
+SUPPORTED_GEMINI_MODELS = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
 
 
 def sanitize_gemini_key(raw_key: str | None) -> str | None:
@@ -77,7 +78,7 @@ class GeminiProvider:
         self,
         api_key: str | None = None,
         api_keys: list[str] | str | None = None,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.5-flash",
     ):
         keys: list[str] = []
         if api_keys:
@@ -152,7 +153,8 @@ class GeminiProvider:
                     )
 
         if valid_models:
-            return valid_models[:10]
+            flash_3_models = [m for m in valid_models if any(m.startswith(f"gemini-3.{x}-flash") for x in range(5, 9))]
+            return flash_3_models if flash_3_models else SUPPORTED_GEMINI_MODELS
 
         if last_err:
             err_str = str(last_err)
@@ -163,7 +165,7 @@ class GeminiProvider:
                 )
             raise DubStudioError("CONNECTION_TEST_FAILED", f"Gemini connection test failed: {err_str}")
 
-        return ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-pro"]
+        return SUPPORTED_GEMINI_MODELS
 
     async def _generate_content_resilient(
         self,
@@ -203,7 +205,9 @@ class GeminiProvider:
             GeminiProvider._global_key_index = (GeminiProvider._global_key_index + 1) % 1_000_000
             ordered_keys = [candidate_pool[(start_key_idx + i) % num_keys] for i in range(num_keys)]
 
-        primary_model = self.model or "gemini-2.5-flash"
+        primary_model = self.model or "gemini-3.5-flash"
+        if primary_model not in SUPPORTED_GEMINI_MODELS:
+            primary_model = "gemini-3.5-flash"
         fallbacks = FALLBACK_CANDIDATES.get(primary_model, DEFAULT_FALLBACKS)
         candidate_models = [primary_model]
         for m in fallbacks:
@@ -298,7 +302,7 @@ class GeminiProvider:
                 "GEMINI_UNAVAILABLE",
                 f"Google Gemini is currently experiencing high demand (503 UNAVAILABLE). "
                 f"Attempted models: {candidate_models}. "
-                "Spikes are usually temporary. Please try again in a few moments or switch to 'gemini-2.5-flash' in Settings."
+                "Spikes are usually temporary. Please try again in a few moments or switch model in Settings."
             )
         if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
             raise ProviderRateLimitError("Gemini", details=err_msg)

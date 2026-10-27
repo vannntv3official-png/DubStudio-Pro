@@ -80,7 +80,7 @@ class SpeechAndAlignmentService:
                 provider = GeminiProvider(
                     api_key=gemini_key.value if (gemini_key and gemini_key.value) else None,
                     api_keys=gemini_keys_setting.value if (gemini_keys_setting and gemini_keys_setting.value) else None,
-                    model=gemini_model.value if (gemini_model and gemini_model.value) else "gemini-2.5-flash",
+                    model=gemini_model.value if (gemini_model and gemini_model.value) else "gemini-3.5-flash",
                 )
                 if not provider.api_keys:
                     return None

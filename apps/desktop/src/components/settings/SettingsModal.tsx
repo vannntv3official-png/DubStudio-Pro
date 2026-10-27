@@ -298,11 +298,10 @@ export const SettingsModal: React.FC = () => {
                 }
                 className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-xs cursor-pointer"
               >
-                <option value="gemini-2.5-flash">gemini-2.5-flash (Recommended - Fast & Highly Available)</option>
-                <option value="gemini-2.5-pro">gemini-2.5-pro (High capability reasoning)</option>
-                <option value="gemini-flash-latest">gemini-flash-latest (Auto updated)</option>
-                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (Cost-efficient)</option>
-                <option value="gemini-3.8-flash">gemini-3.8-flash (Preview - May experience high demand)</option>
+                <option value="gemini-3.5-flash">gemini-3.5-flash (Recommended - Fast & Highly Accurate)</option>
+                <option value="gemini-3.6-flash">gemini-3.6-flash (Balanced Multimodal Performance)</option>
+                <option value="gemini-3.7-flash">gemini-3.7-flash (Advanced Reasoning & Transcription)</option>
+                <option value="gemini-3.8-flash">gemini-3.8-flash (Next-Gen Flagship Flash)</option>
               </select>
             </div>
           </div>

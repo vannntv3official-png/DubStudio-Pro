@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # External AI defaults
     GEMINI_API_KEY: str | None = None
-    GEMINI_DEFAULT_MODEL: str = "gemini-2.5-flash"
+    GEMINI_DEFAULT_MODEL: str = "gemini-3.5-flash"
     CODECRAFT_API_KEY: str | None = None
     CODECRAFT_BASE_URL: str = "https://codecraftapi.com/v1"
     CODECRAFT_DEFAULT_MODEL: str = "deepseek-chat"

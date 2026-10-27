@@ -16,7 +16,7 @@ export const TranscriptEditor: React.FC = () => {
 
   const [provider, setProvider] = useState<'gemini' | 'codecraft'>('gemini');
   const [geminiModel, setGeminiModel] = useState<string>(
-    settings.aiProviders.geminiModel || 'gemini-2.5-flash'
+    settings.aiProviders.geminiModel || 'gemini-3.5-flash'
   );
   const [sourceLang, setSourceLang] = useState('en');
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -112,11 +112,10 @@ export const TranscriptEditor: React.FC = () => {
           <Select
             label="Gemini Model"
             options={[
-              { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash (Recommended, Fast & Stable)' },
-              { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro (High Reasoning)' },
-              { value: 'gemini-flash-latest', label: 'gemini-flash-latest' },
-              { value: 'gemini-2.5-flash-lite', label: 'gemini-2.5-flash-lite' },
-              { value: 'gemini-3.8-flash', label: 'gemini-3.8-flash (Preview)' },
+              { value: 'gemini-3.5-flash', label: 'gemini-3.5-flash (Recommended - Fast & Accurate)' },
+              { value: 'gemini-3.6-flash', label: 'gemini-3.6-flash (Balanced Performance)' },
+              { value: 'gemini-3.7-flash', label: 'gemini-3.7-flash (Advanced Reasoning)' },
+              { value: 'gemini-3.8-flash', label: 'gemini-3.8-flash (Next-Gen Flagship Flash)' },
             ]}
             value={geminiModel}
             onChange={(e) => setGeminiModel(e.target.value)}

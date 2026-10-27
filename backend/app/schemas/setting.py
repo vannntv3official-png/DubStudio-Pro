@@ -7,7 +7,7 @@ class AIProviderSettingsSchema(BaseModel):
 
     gemini_api_key: str = ""
     gemini_api_keys: list[str] = []
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash"
     codecraft_api_key: str = ""
     codecraft_base_url: str = "https://codecraftapi.com/v1"
     codecraft_model: str = "deepseek-chat"

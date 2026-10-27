@@ -29,7 +29,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   selectedTranslationId: null,
   targetLanguage: 'km',
   provider: 'gemini',
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.5-flash',
   isTranslating: false,
 
   loadTranslations: async (projectId: string) => {

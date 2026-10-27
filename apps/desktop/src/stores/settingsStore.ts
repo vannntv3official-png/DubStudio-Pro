@@ -8,7 +8,7 @@ const defaultSettings: AppSettings = {
   aiProviders: {
     geminiApiKey: '',
     geminiApiKeys: [],
-    geminiModel: 'gemini-2.5-flash',
+    geminiModel: 'gemini-3.5-flash',
     codecraftApiKey: '',
     codecraftBaseUrl: 'https://codecraftapi.com/v1',
     codecraftModel: 'deepseek-chat',

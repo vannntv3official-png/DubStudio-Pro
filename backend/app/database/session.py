@@ -99,6 +99,15 @@ def _migrate_sqlite_schema(conn) -> None:
         except Exception:
             pass
 
+    # Migrate legacy Gemini model settings to gemini-3.5-flash
+    try:
+        conn.exec_driver_sql(
+            "UPDATE settings SET value = 'gemini-3.5-flash' "
+            "WHERE key = 'gemini_model' AND (value LIKE 'gemini-2.5%' OR value LIKE 'gemini-1.5%' OR value = 'gemini-flash-latest')"
+        )
+    except Exception:
+        pass
+
 
 async def get_global_db() -> AsyncGenerator[AsyncSession, None]:
     async with GlobalAsyncSessionLocal() as session:

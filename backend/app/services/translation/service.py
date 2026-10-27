@@ -87,7 +87,9 @@ class TranslationService:
 
             if unapproved_turns:
                 if provider_name.lower() == "gemini":
-                    resolved_model = model_name or (gemini_model.value if gemini_model and gemini_model.value else None) or "gemini-2.5-flash"
+                    resolved_model = model_name or (gemini_model.value if gemini_model and gemini_model.value else None) or "gemini-3.5-flash"
+                    if resolved_model in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-flash-latest", "gemini-2.5-flash-lite"):
+                        resolved_model = "gemini-3.5-flash"
                     provider = GeminiProvider(
                         api_key=gemini_key.value if gemini_key else None,
                         api_keys=gemini_keys_setting.value if gemini_keys_setting else None,

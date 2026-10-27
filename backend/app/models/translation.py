@@ -19,7 +19,7 @@ class TranslationSegmentModel(Base):
     source_language: Mapped[str] = mapped_column(String(32), default="en")
     target_language: Mapped[str] = mapped_column(String(32), default="km")
     provider: Mapped[str] = mapped_column(String(64), default="gemini")
-    model: Mapped[str] = mapped_column(String(128), default="gemini-2.5-flash")
+    model: Mapped[str] = mapped_column(String(128), default="gemini-3.5-flash")
     status: Mapped[str] = mapped_column(String(32), default="completed")
     approval_status: Mapped[str] = mapped_column(String(32), default="draft")
     review_reasons: Mapped[list | None] = mapped_column(JSON, default=list)

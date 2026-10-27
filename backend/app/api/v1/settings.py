@@ -27,10 +27,14 @@ async def get_settings():
     gemini_key_single = settings_map.get("gemini_api_key", "")
     parsed_keys = parse_gemini_keys(gemini_keys_raw or gemini_key_single)
 
+    stored_gemini_model = settings_map.get("gemini_model", "gemini-3.5-flash")
+    if stored_gemini_model in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"):
+        stored_gemini_model = "gemini-3.5-flash"
+
     ai_settings = AIProviderSettingsSchema(
         geminiApiKey=parsed_keys[0] if parsed_keys else gemini_key_single,
         geminiApiKeys=parsed_keys,
-        geminiModel=settings_map.get("gemini_model", "gemini-2.5-flash"),
+        geminiModel=stored_gemini_model,
         codecraftApiKey=settings_map.get("codecraft_api_key", ""),
         codecraftBaseUrl=settings_map.get("codecraft_base_url", "https://codecraftapi.com/v1"),
         codecraftModel=settings_map.get("codecraft_model", "deepseek-chat"),
@@ -97,7 +101,7 @@ async def test_provider_connection(req: TestConnectionRequest):
     try:
         if req.provider.lower() == "gemini":
             keys_to_test = req.api_keys or parse_gemini_keys(req.api_key)
-            provider = GeminiProvider(api_keys=keys_to_test, api_key=req.api_key, model=req.model or "gemini-2.5-flash")
+            provider = GeminiProvider(api_keys=keys_to_test, api_key=req.api_key, model=req.model or "gemini-3.5-flash")
             models = await provider.test_connection()
             key_count = len(provider.api_keys)
             key_msg = (
