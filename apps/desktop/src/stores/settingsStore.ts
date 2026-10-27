@@ -38,7 +38,7 @@ interface SettingsState {
   openGeminiPoolModal: () => void;
   closeGeminiPoolModal: () => void;
   loadSettings: () => Promise<void>;
-  saveSettings: (newSettings: AppSettings) => Promise<void>;
+  saveSettings: (newSettings: AppSettings, shouldCloseModal?: boolean) => Promise<void>;
   testConnection: (provider: string, apiKey: string, baseUrl?: string, model?: string, apiKeys?: string[]) => Promise<void>;
   addGeminiKey: (key: string) => Promise<boolean>;
   removeGeminiKey: (index: number) => Promise<void>;
@@ -67,11 +67,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
-  saveSettings: async (newSettings) => {
+  saveSettings: async (newSettings, shouldCloseModal = true) => {
     set({ isLoading: true });
     try {
       const saved = await api.updateSettings(newSettings);
-      set({ settings: saved, isLoading: false, isModalOpen: false });
+      set({ settings: saved, isLoading: false, ...(shouldCloseModal ? { isModalOpen: false } : {}) });
     } catch (e) {
       set({ isLoading: false });
       console.error('Failed to save settings:', e);
@@ -95,7 +95,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         geminiApiKeys: updatedKeys,
       },
     };
-    await get().saveSettings(updatedSettings);
+    await get().saveSettings(updatedSettings, false);
     return true;
   },
 
@@ -113,7 +113,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         geminiApiKeys: updatedKeys,
       },
     };
-    await get().saveSettings(updatedSettings);
+    await get().saveSettings(updatedSettings, false);
   },
 
   clearGeminiKeys: async () => {
@@ -126,7 +126,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         geminiApiKeys: [],
       },
     };
-    await get().saveSettings(updatedSettings);
+    await get().saveSettings(updatedSettings, false);
   },
 
   setGeminiKeys: async (keys: string[]) => {
@@ -139,7 +139,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         geminiApiKeys: keys,
       },
     };
-    await get().saveSettings(updatedSettings);
+    await get().saveSettings(updatedSettings, false);
   },
 
   testConnection: async (provider, apiKey, baseUrl, model, apiKeys) => {

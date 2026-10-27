@@ -74,7 +74,7 @@ export const TranslationEditor: React.FC = () => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Sync models with settings
+  // Sync models and default provider with settings
   useEffect(() => {
     if (settings.aiProviders.geminiModel) {
       setGeminiModel(settings.aiProviders.geminiModel);
@@ -82,7 +82,10 @@ export const TranslationEditor: React.FC = () => {
     if (settings.aiProviders.codecraftModel) {
       setCodecraftModel(settings.aiProviders.codecraftModel);
     }
-  }, [settings.aiProviders.geminiModel, settings.aiProviders.codecraftModel]);
+    if (settings.aiProviders.defaultTranslationProvider) {
+      setProvider(settings.aiProviders.defaultTranslationProvider);
+    }
+  }, [settings.aiProviders.geminiModel, settings.aiProviders.codecraftModel, settings.aiProviders.defaultTranslationProvider, setProvider]);
 
   // Load voices list & generated audios
   useEffect(() => {

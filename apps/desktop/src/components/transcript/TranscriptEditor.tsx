@@ -14,7 +14,9 @@ export const TranscriptEditor: React.FC = () => {
   const { setCurrentTimeMs } = usePlayerStore();
   const { settings, openModal, openGeminiPoolModal } = useSettingsStore();
 
-  const [provider, setProvider] = useState<'gemini' | 'codecraft'>('gemini');
+  const [provider, setProvider] = useState<'gemini' | 'codecraft'>(
+    settings.aiProviders.defaultTranscriptionProvider || 'gemini'
+  );
   const [geminiModel, setGeminiModel] = useState<string>(
     settings.aiProviders.geminiModel || 'gemini-3.5-flash'
   );
@@ -25,7 +27,10 @@ export const TranscriptEditor: React.FC = () => {
     if (settings.aiProviders.geminiModel) {
       setGeminiModel(settings.aiProviders.geminiModel);
     }
-  }, [settings.aiProviders.geminiModel]);
+    if (settings.aiProviders.defaultTranscriptionProvider) {
+      setProvider(settings.aiProviders.defaultTranscriptionProvider);
+    }
+  }, [settings.aiProviders.geminiModel, settings.aiProviders.defaultTranscriptionProvider]);
 
   const geminiPoolKeys = settings.aiProviders.geminiApiKeys || [];
   const primaryGeminiKey = geminiPoolKeys.length > 0 ? geminiPoolKeys[0] : settings.aiProviders.geminiApiKey;
