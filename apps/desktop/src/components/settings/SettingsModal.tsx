@@ -26,7 +26,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { maskApiKey } from './GeminiKeyPoolModal';
 import type { AIProvider } from '@dubstudio/shared-types';
 
-type SettingsTab = 'general' | 'gemini' | 'codecraft' | 'storage';
+type SettingsTab = 'general' | 'gemini' | 'local_asr' | 'codecraft' | 'storage';
 
 function parseKeysFromText(text: string): string[] {
   return text
@@ -126,6 +126,24 @@ export const SettingsModal: React.FC = () => {
     );
   };
 
+  const handleTestSenseVoice = async () => {
+    await testConnection(
+      'sensevoice',
+      '',
+      localSettings.aiProviders.sensevoiceLocalUrl,
+      localSettings.aiProviders.sensevoiceModel
+    );
+  };
+
+  const handleTestParaformer = async () => {
+    await testConnection(
+      'paraformer',
+      '',
+      localSettings.aiProviders.paraformerLocalUrl,
+      localSettings.aiProviders.paraformerModel
+    );
+  };
+
   const handleSelectFolder = async (field: 'projectsDir' | 'defaultExportPath' | 'tempDir') => {
     if (typeof window !== 'undefined' && window.dubstudio?.selectFolder) {
       const selected = await window.dubstudio.selectFolder();
@@ -219,7 +237,24 @@ export const SettingsModal: React.FC = () => {
             )}
           </button>
 
-          {/* Tab 3: Codecraft */}
+          {/* Tab 3: Local ASR */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('local_asr')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'local_asr'
+                ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-200/50 dark:hover:bg-zinc-800/40'
+            }`}
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            <span>Local ASR</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-200/50 dark:border-emerald-800/50">
+              Offline
+            </span>
+          </button>
+
+          {/* Tab 4: Codecraft */}
           <button
             type="button"
             onClick={() => setActiveTab('codecraft')}
@@ -290,6 +325,8 @@ export const SettingsModal: React.FC = () => {
                       className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-xs cursor-pointer"
                     >
                       <option value="gemini">Google Gemini (Recommended - Native Audio & Timestamps)</option>
+                      <option value="sensevoice">SenseVoice-Small (Local / Offline - ក្នុងម៉ាស៊ីន Fast)</option>
+                      <option value="paraformer">Paraformer-zh (Local Chinese / ក្នុងម៉ាស៊ីន VAD + Punc)</option>
                       <option value="codecraft">Codecraft API (OpenAI Compatible Endpoint)</option>
                     </select>
                     <p className="text-[10px] text-slate-500 dark:text-zinc-400 leading-tight">
@@ -310,7 +347,7 @@ export const SettingsModal: React.FC = () => {
                           ...localSettings,
                           aiProviders: {
                             ...localSettings.aiProviders,
-                            defaultTranslationProvider: e.target.value as AIProvider,
+                            defaultTranslationProvider: e.target.value as 'gemini' | 'codecraft',
                           },
                         })
                       }
@@ -638,7 +675,165 @@ export const SettingsModal: React.FC = () => {
           )}
 
           {/* ============================================================== */}
-          {/* TAB 3: CODECRAFT AI (OPENAI COMPATIBLE)                       */}
+          {/* TAB: LOCAL ASR (SENSEVOICE-SMALL & PARAFORMER-ZH)             */}
+          {/* ============================================================== */}
+          {activeTab === 'local_asr' && (
+            <div className="flex flex-col gap-4 animate-fade-in">
+              {/* Engine 1: SenseVoice-Small */}
+              <div className="rounded-2xl bg-slate-50/90 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800/80 p-4 flex flex-col gap-3 shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-zinc-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Mic className="w-4 h-4 text-emerald-500" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+                      SenseVoice-Small (Multilingual Local Engine)
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
+                      FunASR • Offline
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleTestSenseVoice}
+                    disabled={isLoading}
+                    className="text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-200/60 dark:hover:bg-zinc-800 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 transition-colors disabled:opacity-50"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
+                    )}
+                    <span>Test Engine</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold text-slate-700 dark:text-zinc-300">
+                      SenseVoice Model Name
+                    </label>
+                    <input
+                      type="text"
+                      value={localSettings.aiProviders.sensevoiceModel || 'SenseVoice-Small'}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          aiProviders: { ...localSettings.aiProviders, sensevoiceModel: e.target.value },
+                        })
+                      }
+                      className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-xs"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold text-slate-700 dark:text-zinc-300">
+                      Local HTTP Fallback Endpoint (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="http://127.0.0.1:10095"
+                      value={localSettings.aiProviders.sensevoiceLocalUrl || ''}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          aiProviders: { ...localSettings.aiProviders, sensevoiceLocalUrl: e.target.value },
+                        })
+                      }
+                      className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-xs"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                  គាំទ្រការបំប្លែងសំឡេងល្បឿនលឿន (Rich Audio Transcription) ជាភាសាចិន អង់គ្លេស កន្តាំង ជប៉ុន និងកូរ៉េ។ ដំណើរការដោយផ្ទាល់ក្នុងម៉ាស៊ីន (In-process PyTorch + FunASR) មិនចាំបាច់មាន API Key ឬ Internet។
+                </p>
+              </div>
+
+              {/* Engine 2: Paraformer-zh */}
+              <div className="rounded-2xl bg-slate-50/90 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800/80 p-4 flex flex-col gap-3 shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-zinc-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Mic className="w-4 h-4 text-sky-500" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+                      Paraformer-zh (High-Accuracy Chinese ASR)
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200/60 dark:border-sky-800/40">
+                      VAD + Punc • Offline
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleTestParaformer}
+                    disabled={isLoading}
+                    className="text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-200/60 dark:hover:bg-zinc-800 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 transition-colors disabled:opacity-50"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-500" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
+                    )}
+                    <span>Test Engine</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold text-slate-700 dark:text-zinc-300">
+                      Paraformer Model Name
+                    </label>
+                    <input
+                      type="text"
+                      value={localSettings.aiProviders.paraformerModel || 'Paraformer-zh'}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          aiProviders: { ...localSettings.aiProviders, paraformerModel: e.target.value },
+                        })
+                      }
+                      className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-xs"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold text-slate-700 dark:text-zinc-300">
+                      Local HTTP Fallback Endpoint (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="http://127.0.0.1:10095"
+                      value={localSettings.aiProviders.paraformerLocalUrl || ''}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          aiProviders: { ...localSettings.aiProviders, paraformerLocalUrl: e.target.value },
+                        })
+                      }
+                      className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-xs"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                  ម៉ូដែល Non-Autoregressive លំដាប់កំពូលសម្រាប់ភាសាចិន (Chinese ASR) រួមបញ្ចូលប្រព័ន្ធ FSMN-VAD (Voice Activity Detection) និង CT-Transformer Punctuation Restoration ដើម្បីកាត់ឃ្លាបានច្បាស់លាស់បំផុត។
+                </p>
+              </div>
+
+              {/* Hardware Acceleration & Privacy Badge */}
+              <div className="p-3 rounded-xl bg-slate-100 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 flex items-start gap-2.5 text-xs text-slate-600 dark:text-zinc-300">
+                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <div className="flex flex-col gap-0.5 text-[11px]">
+                  <span className="font-semibold text-slate-800 dark:text-zinc-200">
+                    100% Private, Local & Quota-Free (សុវត្ថិភាពខ្ពស់ គ្មានដែនកំណត់)
+                  </span>
+                  <span className="text-slate-500 dark:text-zinc-400">
+                    ដំណើរការក្នុងម៉ាស៊ីនកុំព្យូទ័ររបស់អ្នកដោយផ្ទាល់ មិនផ្ញើសំឡេងទៅ Cloud ឡើយ។ ប្រព័ន្ធនឹងជ្រើសរើស NVIDIA CUDA GPU ដោយស្វ័យប្រវត្តិ ប្រសិនបើមាន ឬប្រើពហុខ្នង CPU ដោយរលូន។
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* TAB 4: CODECRAFT AI (OPENAI COMPATIBLE)                       */}
           {/* ============================================================== */}
           {activeTab === 'codecraft' && (
             <div className="flex flex-col gap-4 animate-fade-in">

@@ -29,8 +29,8 @@ export const TranscriptEditor: React.FC = () => {
   const { setCurrentTimeMs } = usePlayerStore();
   const { settings, openModal, openGeminiPoolModal } = useSettingsStore();
 
-  const [provider, setProvider] = useState<'gemini' | 'codecraft'>(
-    settings.aiProviders.defaultTranscriptionProvider || 'gemini'
+  const [provider, setProvider] = useState<'gemini' | 'codecraft' | 'sensevoice' | 'paraformer'>(
+    (settings.aiProviders.defaultTranscriptionProvider as any) || 'gemini'
   );
   const [geminiModel, setGeminiModel] = useState<string>(
     settings.aiProviders.geminiModel || 'gemini-3.5-flash-lite'
@@ -53,7 +53,7 @@ export const TranscriptEditor: React.FC = () => {
       setGeminiModel(settings.aiProviders.geminiModel);
     }
     if (settings.aiProviders.defaultTranscriptionProvider) {
-      setProvider(settings.aiProviders.defaultTranscriptionProvider);
+      setProvider(settings.aiProviders.defaultTranscriptionProvider as any);
     }
   }, [settings.aiProviders.geminiModel, settings.aiProviders.defaultTranscriptionProvider]);
 
@@ -70,13 +70,16 @@ export const TranscriptEditor: React.FC = () => {
     }
   }, [segments.length > 0]);
 
+  const isLocalProvider = provider === 'sensevoice' || provider === 'paraformer';
   const geminiPoolKeys = settings.aiProviders.geminiApiKeys || [];
   const primaryGeminiKey = geminiPoolKeys.length > 0 ? geminiPoolKeys[0] : settings.aiProviders.geminiApiKey;
   const rawKey = provider === 'gemini' ? primaryGeminiKey : settings.aiProviders.codecraftApiKey;
-  const isKeyConfigured = Boolean(
-    rawKey?.trim() &&
-    !['dummy_test_key', 'your_api_key_here', 'aizasy...', 'placeholder'].includes(rawKey.trim().toLowerCase())
-  );
+  const isKeyConfigured =
+    isLocalProvider ||
+    Boolean(
+      rawKey?.trim() &&
+      !['dummy_test_key', 'your_api_key_here', 'aizasy...', 'placeholder'].includes(rawKey.trim().toLowerCase())
+    );
 
   const handleStartTranscription = async () => {
     if (!currentProject) {
@@ -92,7 +95,14 @@ export const TranscriptEditor: React.FC = () => {
       return;
     }
 
-    const chosenModel = provider === 'gemini' ? geminiModel : settings.aiProviders.codecraftModel;
+    const chosenModel =
+      provider === 'gemini'
+        ? geminiModel
+        : provider === 'codecraft'
+        ? settings.aiProviders.codecraftModel
+        : provider === 'sensevoice'
+        ? (settings.aiProviders.sensevoiceModel || 'SenseVoice-Small')
+        : (settings.aiProviders.paraformerModel || 'Paraformer-zh');
 
     setIsTranscribing(true);
     try {
@@ -150,9 +160,30 @@ export const TranscriptEditor: React.FC = () => {
         {/* Row 1: Model status & Toggle button */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 overflow-hidden">
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 truncate max-w-[170px]">
-              {provider === 'gemini' ? geminiModel.replace('gemini-', '') : 'Codecraft'}
+            <span
+              className={`px-2 py-0.5 rounded-md text-[10px] font-mono border truncate max-w-[170px] ${
+                isLocalProvider
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+              }`}
+            >
+              {provider === 'gemini'
+                ? geminiModel.replace('gemini-', '')
+                : provider === 'codecraft'
+                ? 'Codecraft'
+                : provider === 'sensevoice'
+                ? 'SenseVoice (Local)'
+                : 'Paraformer (Local)'}
             </span>
+            {isLocalProvider && (
+              <span
+                className="px-1.5 py-0.5 rounded-md text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1 shrink-0"
+                title="Offline Local Model (No API key required)"
+              >
+                <Check className="w-2.5 h-2.5" />
+                <span>Offline</span>
+              </span>
+            )}
             {provider === 'gemini' && isKeyConfigured && (
               <button
                 type="button"
@@ -185,8 +216,10 @@ export const TranscriptEditor: React.FC = () => {
               <Select
                 label="AI Provider"
                 options={[
-                  { value: 'gemini', label: 'Google Gemini' },
-                  { value: 'codecraft', label: 'Codecraft API' },
+                  { value: 'gemini', label: 'Google Gemini (Cloud AI)' },
+                  { value: 'sensevoice', label: 'SenseVoice-Small (Local / ក្នុងម៉ាស៊ីន)' },
+                  { value: 'paraformer', label: 'Paraformer-zh (Local Chinese / ក្នុងម៉ាស៊ីន)' },
+                  { value: 'codecraft', label: 'Codecraft API (OpenAI Compatible)' },
                 ]}
                 value={provider}
                 onChange={(e) => setProvider(e.target.value as any)}
@@ -225,7 +258,28 @@ export const TranscriptEditor: React.FC = () => {
               />
             )}
 
-            {!isKeyConfigured && (
+            {isLocalProvider && (
+              <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>
+                      {provider === 'sensevoice' ? 'SenseVoice-Small' : 'Paraformer-zh'} Local Engine Active
+                    </span>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
+                    Offline • 0 Quota
+                  </span>
+                </div>
+                <p className="text-[10px] text-emerald-200/70 leading-tight">
+                  {provider === 'sensevoice'
+                    ? 'ដំណើរការក្នុងកុំព្យូទ័រផ្ទាល់ជាមួយ FunASR (គាំទ្រ zh, en, yue, ja, ko) មិនចាំបាច់មានអ៊ីនធឺណិត ឬ API Key ឡើយ។'
+                    : 'ម៉ូដែលបំប្លែងសំឡេងចិនកម្រិតខ្ពស់ រួមបញ្ចូលប្រព័ន្ធ VAD និងសញ្ញាវណ្ណយុត្តិស្វ័យប្រវត្តិ។'}
+                </p>
+              </div>
+            )}
+
+            {!isKeyConfigured && !isLocalProvider && (
               <div className="flex items-center justify-between p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px]">
                 <div className="flex items-center gap-1.5 overflow-hidden">
                   <Key className="w-3.5 h-3.5 shrink-0 text-amber-400" />

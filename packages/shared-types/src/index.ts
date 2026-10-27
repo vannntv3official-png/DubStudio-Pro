@@ -3,7 +3,7 @@
  * Production type definitions shared between Electron Main, Preload, React UI, and API.
  */
 
-export type AIProvider = 'gemini' | 'codecraft';
+export type AIProvider = 'gemini' | 'codecraft' | 'sensevoice' | 'paraformer';
 export type TTSProvider = 'edge_tts';
 
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -339,8 +339,12 @@ export interface AIProviderSettings {
   codecraftApiKey: string;
   codecraftBaseUrl: string;
   codecraftModel: string;
+  sensevoiceModel?: string;
+  sensevoiceLocalUrl?: string;
+  paraformerModel?: string;
+  paraformerLocalUrl?: string;
   defaultTranscriptionProvider: AIProvider;
-  defaultTranslationProvider: AIProvider;
+  defaultTranslationProvider: 'gemini' | 'codecraft';
   defaultTTSProvider: TTSProvider;
   requestTimeoutSeconds: number;
   retryAttempts: number;

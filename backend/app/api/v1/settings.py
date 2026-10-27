@@ -38,6 +38,10 @@ async def get_settings():
         codecraftApiKey=settings_map.get("codecraft_api_key", ""),
         codecraftBaseUrl=settings_map.get("codecraft_base_url", "https://codecraftapi.com/v1"),
         codecraftModel=settings_map.get("codecraft_model", "deepseek-chat"),
+        sensevoiceModel=settings_map.get("sensevoice_model", "SenseVoice-Small"),
+        sensevoiceLocalUrl=settings_map.get("sensevoice_local_url", "http://127.0.0.1:10095"),
+        paraformerModel=settings_map.get("paraformer_model", "Paraformer-zh"),
+        paraformerLocalUrl=settings_map.get("paraformer_local_url", "http://127.0.0.1:10095"),
         defaultTranscriptionProvider=settings_map.get("default_transcription_provider", "gemini"),
         defaultTranslationProvider=settings_map.get("default_translation_provider", "gemini"),
         defaultTTSProvider=settings_map.get("default_tts_provider", "edge_tts"),
@@ -70,6 +74,10 @@ async def update_settings(data: AppSettingsSchema):
         "codecraft_api_key": data.ai_providers.codecraft_api_key,
         "codecraft_base_url": data.ai_providers.codecraft_base_url,
         "codecraft_model": data.ai_providers.codecraft_model,
+        "sensevoice_model": data.ai_providers.sensevoice_model,
+        "sensevoice_local_url": data.ai_providers.sensevoice_local_url,
+        "paraformer_model": data.ai_providers.paraformer_model,
+        "paraformer_local_url": data.ai_providers.paraformer_local_url,
         "default_transcription_provider": data.ai_providers.default_transcription_provider,
         "default_translation_provider": data.ai_providers.default_translation_provider,
         "default_tts_provider": data.ai_providers.default_tts_provider,
@@ -131,6 +139,24 @@ async def test_provider_connection(req: TestConnectionRequest):
                 success=True,
                 message="Successfully authenticated and verified Codecraft API!",
                 models=models,
+            )
+        elif req.provider.lower() in ("sensevoice", "sensevoice-small"):
+            import torch
+            import funasr
+            device = "CUDA GPU" if torch.cuda.is_available() else "CPU"
+            return TestConnectionResponse(
+                success=True,
+                message=f"SenseVoice-Small engine is ready locally! (FunASR {funasr.__version__}, PyTorch {torch.__version__}, Acceleration: {device})",
+                models=["SenseVoice-Small (Multilingual / zh, en, yue, ja, ko)"],
+            )
+        elif req.provider.lower() in ("paraformer", "paraformer-zh"):
+            import torch
+            import funasr
+            device = "CUDA GPU" if torch.cuda.is_available() else "CPU"
+            return TestConnectionResponse(
+                success=True,
+                message=f"Paraformer-zh engine is ready locally! (FunASR {funasr.__version__}, PyTorch {torch.__version__}, Acceleration: {device})",
+                models=["Paraformer-zh (Chinese Non-Autoregressive + VAD + Punc)"],
             )
         else:
             return TestConnectionResponse(

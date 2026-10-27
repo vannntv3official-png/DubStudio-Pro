@@ -11,6 +11,7 @@ from app.models.transcript import TranscriptSegmentModel
 from app.models.setting import SettingModel
 from app.providers.gemini.provider import GeminiProvider
 from app.providers.codecraft.provider import CodecraftProvider
+from app.providers.local_asr.provider import SenseVoiceProvider, ParaformerProvider
 from app.providers.base import TranscriptResultItem
 from app.schemas.transcript import TranscriptSegmentResponse, TranscriptSplitRequest, TranscriptMergeRequest
 from app.utils.file_io import atomic_write_json
@@ -117,6 +118,8 @@ class TranscriptionService:
             codecraft_key = await g_session.get(SettingModel, "codecraft_api_key")
             codecraft_base = await g_session.get(SettingModel, "codecraft_base_url")
             codecraft_model = await g_session.get(SettingModel, "codecraft_model")
+            sensevoice_url = await g_session.get(SettingModel, "sensevoice_local_url")
+            paraformer_url = await g_session.get(SettingModel, "paraformer_local_url")
 
         project_dir = Path(project.project_dir)
         _, session_maker = get_project_engine(project_dir)
@@ -128,10 +131,12 @@ class TranscriptionService:
 
             audio_path = Path(media.extracted_audio_path)
 
-            if on_progress:
-                on_progress(10.0, f"Initializing {provider_name.capitalize()} speech recognition...")
+            clean_pname = provider_name.lower().replace("-", "_").replace(" ", "_")
 
-            if provider_name.lower() == "gemini":
+            if on_progress:
+                on_progress(10.0, f"Initializing {provider_name} speech recognition engine...")
+
+            if clean_pname in ("gemini",):
                 resolved_model = model_name or (gemini_model.value if gemini_model and gemini_model.value else None) or "gemini-3.5-flash"
                 if resolved_model in ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-flash-latest", "gemini-2.5-flash-lite"):
                     resolved_model = "gemini-3.5-flash"
@@ -140,12 +145,22 @@ class TranscriptionService:
                     api_keys=gemini_keys_setting.value if gemini_keys_setting else None,
                     model=resolved_model,
                 )
-            elif provider_name.lower() == "codecraft":
+            elif clean_pname in ("codecraft",):
                 resolved_model = model_name or (codecraft_model.value if codecraft_model and codecraft_model.value else None) or "deepseek-chat"
                 provider = CodecraftProvider(
                     api_key=codecraft_key.value if codecraft_key else None,
                     base_url=codecraft_base.value if codecraft_base else "https://codecraftapi.com/v1",
                     model=resolved_model,
+                )
+            elif "sensevoice" in clean_pname:
+                provider = SenseVoiceProvider(
+                    model="SenseVoice-Small",
+                    local_url=sensevoice_url.value if sensevoice_url else None,
+                )
+            elif "paraformer" in clean_pname:
+                provider = ParaformerProvider(
+                    model="Paraformer-zh",
+                    local_url=paraformer_url.value if paraformer_url else None,
                 )
             else:
                 raise ValueError(f"Unknown transcription provider: {provider_name}")

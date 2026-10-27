@@ -89,7 +89,7 @@ export const TranslationEditor: React.FC = () => {
     if (settings.aiProviders.codecraftModel) {
       setCodecraftModel(settings.aiProviders.codecraftModel);
     }
-    if (settings.aiProviders.defaultTranslationProvider) {
+    if (settings.aiProviders.defaultTranslationProvider === 'gemini' || settings.aiProviders.defaultTranslationProvider === 'codecraft') {
       setProvider(settings.aiProviders.defaultTranslationProvider);
     }
   }, [settings.aiProviders.geminiModel, settings.aiProviders.codecraftModel, settings.aiProviders.defaultTranslationProvider, setProvider]);
