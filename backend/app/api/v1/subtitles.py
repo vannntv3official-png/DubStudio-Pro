@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, HTTPException, Response
 from app.schemas.subtitle import SubtitleStateResponse, SubtitleImportRequest
 from app.services.subtitles.service import SubtitleService
 
@@ -7,7 +7,10 @@ router = APIRouter(prefix="/subtitles", tags=["subtitles"])
 
 @router.get("/{project_id}", response_model=SubtitleStateResponse)
 async def get_project_subtitles(project_id: str):
-    return await SubtitleService.get_subtitles(project_id)
+    try:
+        return await SubtitleService.get_subtitles(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/{project_id}/export/srt")

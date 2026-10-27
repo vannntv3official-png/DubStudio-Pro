@@ -199,6 +199,8 @@ async def execute_ffmpeg_with_progress(
 
     time_regex = re.compile(r"out_time_ms=(\d+)")
 
+    stderr_chunks: list[bytes] = []
+
     async def read_stdout():
         while True:
             if cancel_event and cancel_event.is_set():
@@ -215,12 +217,19 @@ async def execute_ffmpeg_with_progress(
                 pct = min(99.0, max(0.0, (current_sec / total_duration_sec) * 100.0))
                 on_progress(pct, f"Rendering video... {pct:.1f}%")
 
+    async def read_stderr():
+        while True:
+            chunk = await proc.stderr.read(4096)
+            if not chunk:
+                break
+            stderr_chunks.append(chunk)
+
     try:
-        await asyncio.gather(read_stdout(), proc.wait())
+        await asyncio.gather(read_stdout(), read_stderr(), proc.wait())
     except Exception as e:
         proc.kill()
         raise ExportError(f"FFmpeg execution interrupted: {e}")
 
     if proc.returncode != 0 and not (cancel_event and cancel_event.is_set()):
-        stderr_output = (await proc.stderr.read()).decode("utf-8", errors="replace")
+        stderr_output = b"".join(stderr_chunks).decode("utf-8", errors="replace")
         raise ExportError(f"FFmpeg render error: {stderr_output[-1000:]}")

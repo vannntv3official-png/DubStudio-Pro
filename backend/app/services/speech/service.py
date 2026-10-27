@@ -137,23 +137,26 @@ class SpeechAndAlignmentService:
         segment_ids: list[str] | None = None,
         sync_mode: str | None = None,
         on_progress=None,
+        cancel_event: asyncio.Event | None = None,
     ) -> list[GeneratedAudioResponse]:
         async with GlobalAsyncSessionLocal() as g_session:
             project = await g_session.get(ProjectModel, project_id)
             if not project:
                 raise ValueError("Project not found")
+            project_dir_str = project.project_dir
+            target_lang = project.target_language or "km"
+            proj_sync_mode = project.sync_mode or "balanced"
 
-        project_dir = Path(project.project_dir)
+        project_dir = Path(project_dir_str)
         takes_dir = project_dir / "media" / "takes"
         takes_dir.mkdir(parents=True, exist_ok=True)
         _, session_maker = get_project_engine(project_dir)
 
         # Determine target voice
-        target_lang = project.target_language or "km"
         if not voice_id:
             voice_id = await EdgeTTSProvider.get_default_voice_for_locale(target_lang)
 
-        chosen_sync_mode = (sync_mode or project.sync_mode or "balanced").lower()
+        chosen_sync_mode = (sync_mode or proj_sync_mode).lower()
         policy = TIMING_POLICIES.get(chosen_sync_mode, TIMING_POLICIES["balanced"])
         max_pause_ms = policy["max_pause_ms"]
         max_tempo = policy["max_tempo"]
@@ -209,12 +212,19 @@ class SpeechAndAlignmentService:
 
             async def process_single_segment(seg_id: str):
                 nonlocal completed_count
+                if cancel_event and cancel_event.is_set():
+                    return None
                 t_seg = transcripts.get(seg_id)
                 tr_seg = translations.get(seg_id)
                 if not t_seg or not tr_seg:
                     return None
 
+                raw_take_path = None
+                aligned_take_path = None
+
                 async with semaphore:
+                    if cancel_event and cancel_event.is_set():
+                        return None
                     # Resolve speaker voice
                     sp = speakers.get(t_seg.speaker_id)
                     seg_voice = (sp.voice_id if sp and sp.voice_id else voice_id) or voice_id
@@ -333,7 +343,7 @@ class SpeechAndAlignmentService:
 
                     except Exception as seg_err:
                         logger.exception(f"Error processing audio synthesis for segment {t_seg.id}: {seg_err}")
-                        if not aligned_take_path.exists():
+                        if aligned_take_path and not aligned_take_path.exists():
                             await EdgeTTSProvider._generate_silence(aligned_take_path, target_dur_ms)
                         final_dur_ms = float(target_dur_ms)
                         measured_dur_ms = float(target_dur_ms)
@@ -371,6 +381,9 @@ class SpeechAndAlignmentService:
 
             # Execute all segment audio generation in parallel with bounded concurrency
             raw_results = await asyncio.gather(*(process_single_segment(sid) for sid in target_t_ids), return_exceptions=True)
+            for r in raw_results:
+                if isinstance(r, Exception):
+                    logger.error(f"Speech synthesis worker error: {r}")
             results = [r for r in raw_results if isinstance(r, dict)]
 
             generated_list: list[GeneratedAudioModel] = []
@@ -460,7 +473,7 @@ class SpeechAndAlignmentService:
                 await session.execute(
                     delete(SubtitleItemModel).where(
                         SubtitleItemModel.project_id == project_id,
-                        SubtitleItemModel.start_ms >= t_seg.start_ms - 30,
+                        SubtitleItemModel.start_ms >= t_seg.start_ms,
                         SubtitleItemModel.start_ms < range_end,
                     )
                 )

@@ -25,12 +25,16 @@ export const WelcomeHub: React.FC<WelcomeHubProps> = ({ onOpenNewProject }) => {
 
   const handleOpenMedia = async () => {
     if (typeof window !== 'undefined' && window.dubstudio) {
-      const selectedPath = await window.dubstudio.selectVideoFile();
-      if (selectedPath) {
-        // Automatically create a project named after the video file
-        const fileName = selectedPath.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || 'Dubbed Video';
-        const project = await createProject(`${fileName} Dub`, 'en', 'km', 'balanced');
-        await importMediaFile(selectedPath);
+      try {
+        const selectedPath = await window.dubstudio.selectVideoFile();
+        if (selectedPath) {
+          // Automatically create a project named after the video file
+          const fileName = selectedPath.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || 'Dubbed Video';
+          await createProject(`${fileName} Dub`, 'en', 'km', 'balanced');
+          await importMediaFile(selectedPath);
+        }
+      } catch (err: any) {
+        console.error('Failed to open media file:', err);
       }
     }
   };
@@ -38,19 +42,11 @@ export const WelcomeHub: React.FC<WelcomeHubProps> = ({ onOpenNewProject }) => {
   const handleLoadDemo = async () => {
     setIsDemoLoading(true);
     try {
-      const project = await createProject('Khmer Dubbing Demo', 'en', 'km', 'balanced');
-      // Look for root test_input.mp4 in workspace
       if (typeof window !== 'undefined' && window.dubstudio) {
-        // In local desktop app, test_input.mp4 is located in workspace root
-        const demoPath = 'd:\\DubStudio_Pro2\\test_input.mp4';
-        try {
-          await importMediaFile(demoPath);
-        } catch {
-          // If path differs, open file picker
-          const selectedPath = await window.dubstudio.selectVideoFile();
-          if (selectedPath) {
-            await importMediaFile(selectedPath);
-          }
+        const selectedPath = await window.dubstudio.selectVideoFile();
+        if (selectedPath) {
+          await createProject('Khmer Dubbing Demo', 'en', 'km', 'balanced');
+          await importMediaFile(selectedPath);
         }
       }
     } catch (e: any) {
@@ -153,7 +149,7 @@ export const WelcomeHub: React.FC<WelcomeHubProps> = ({ onOpenNewProject }) => {
               <span>Recent Projects</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full">
-              {Array.from(new Map(recentProjects.map((p) => [p.name, p])).values()).slice(0, 4).map((p) => (
+              {Array.from(new Map(recentProjects.map((p) => [p.id, p])).values()).slice(0, 4).map((p) => (
                 <div
                   key={p.id}
                   onClick={() => openProject(p.id)}

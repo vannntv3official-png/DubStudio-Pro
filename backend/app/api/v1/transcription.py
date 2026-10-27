@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from app.schemas.transcript import (
     TranscriptionJobRequest,
     TranscriptSegmentResponse,
@@ -42,10 +42,16 @@ async def get_transcript_segments(project_id: str):
 
 
 @router.post("/split", response_model=list[TranscriptSegmentResponse])
-async def split_transcript_segment(req: TranscriptSplitRequest, project_id: str):
-    return await TranscriptionService.split_segment(project_id, req)
+async def split_transcript_segment(req: TranscriptSplitRequest, project_id: str | None = Query(default=None)):
+    target_pid = project_id or req.project_id
+    if not target_pid:
+        raise HTTPException(status_code=400, detail="Missing required project_id")
+    return await TranscriptionService.split_segment(target_pid, req)
 
 
 @router.post("/merge", response_model=list[TranscriptSegmentResponse])
-async def merge_transcript_segments(req: TranscriptMergeRequest, project_id: str):
-    return await TranscriptionService.merge_segments(project_id, req)
+async def merge_transcript_segments(req: TranscriptMergeRequest, project_id: str | None = Query(default=None)):
+    target_pid = project_id or req.project_id
+    if not target_pid:
+        raise HTTPException(status_code=400, detail="Missing required project_id")
+    return await TranscriptionService.merge_segments(target_pid, req)

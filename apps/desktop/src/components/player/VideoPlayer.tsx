@@ -59,7 +59,7 @@ export const VideoPlayer: React.FC = () => {
   } = usePlayerStore();
 
   const [aspectRatio, setAspectRatio] = useState<AspectRatioMode>('fit');
-  const [useLocalProtocol, setUseLocalProtocol] = useState(false);
+  const [useBackendFallback, setUseBackendFallback] = useState(false);
   const [scrubberHoverTime, setScrubberHoverTime] = useState<number | null>(null);
   const [scrubberHoverX, setScrubberHoverX] = useState<number | null>(null);
   const [isDuckingActive, setIsDuckingActive] = useState(false);
@@ -78,9 +78,9 @@ export const VideoPlayer: React.FC = () => {
     ? `${getBackendUrl()}/media/stream/${primaryAsset.id}?token=${getAuthToken()}`
     : '';
 
-  // In Electron desktop environment, use direct high-performance local protocol first
+  // In Electron desktop environment, use direct high-performance local protocol first, fall back to backend stream on error
   const videoSrc =
-    isElectron && localProtocolUrl && !useLocalProtocol
+    isElectron && localProtocolUrl && !useBackendFallback
       ? localProtocolUrl
       : backendStreamUrl || localProtocolUrl;
 
@@ -154,7 +154,7 @@ export const VideoPlayer: React.FC = () => {
     if (!videoRef.current) return;
     // Only seek video if the time change was external (scrubber, timeline click, frame step)
     // and not from the video element's own timeupdate event!
-    if (Math.abs(currentTimeMs - lastVideoReportedTimeMs.current) > 120) {
+    if (Math.abs(currentTimeMs - lastVideoReportedTimeMs.current) > 250) {
       lastVideoReportedTimeMs.current = currentTimeMs;
       videoRef.current.currentTime = currentTimeMs / 1000;
     }
@@ -394,9 +394,9 @@ export const VideoPlayer: React.FC = () => {
               onLoadedMetadata={handleLoadedMetadata}
               onClick={togglePlay}
               onError={() => {
-                // If primary source fails, switch to local protocol
-                if (!useLocalProtocol && localProtocolUrl) {
-                  setUseLocalProtocol(true);
+                // If primary direct local protocol fails, fall back to backend byte-range stream
+                if (!useBackendFallback && backendStreamUrl) {
+                  setUseBackendFallback(true);
                 }
               }}
               className="w-full h-full object-contain cursor-pointer"

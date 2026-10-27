@@ -17,9 +17,9 @@ class ProjectModel(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     sync_mode: Mapped[str] = mapped_column(String(32), default="balanced")
     dubbing_register: Mapped[str] = mapped_column(String(32), default="natural")
-    character_memory: Mapped[dict | None] = mapped_column(JSON, default=dict)
-    glossary: Mapped[dict | None] = mapped_column(JSON, default=dict)
-    pronunciation_overrides: Mapped[dict | None] = mapped_column(JSON, default=dict)
+    character_memory: Mapped[dict | None] = mapped_column(JSON, default=lambda: {})
+    glossary: Mapped[dict | None] = mapped_column(JSON, default=lambda: {})
+    pronunciation_overrides: Mapped[dict | None] = mapped_column(JSON, default=lambda: {})
     audio_settings: Mapped[dict] = mapped_column(
         JSON,
         default=lambda: {

@@ -555,12 +555,3 @@ class GeminiProvider:
             if "API_KEY_INVALID" in err_str or "401" in err_str or "403" in err_str or "API key not valid" in err_str:
                 raise ProviderAuthError("Gemini", details=err_str)
             raise DubStudioError("TRANSLATION_FAILED", f"Gemini translation failed: {err_str}")
-
-            raise
-        except Exception as e:
-            err_str = str(e)
-            if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
-                raise ProviderRateLimitError("Gemini", details=err_str)
-            if "API_KEY_INVALID" in err_str or "401" in err_str or "403" in err_str or "API key not valid" in err_str:
-                raise ProviderAuthError("Gemini", details=err_str)
-            raise DubStudioError("TRANSLATION_FAILED", f"Gemini translation failed: {err_str}")

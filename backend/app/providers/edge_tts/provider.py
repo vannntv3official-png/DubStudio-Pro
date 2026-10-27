@@ -206,6 +206,8 @@ class EdgeTTSProvider:
                 await fallback_comm.save(str(temp_mp3))
             except Exception as e2:
                 logger.warning(f"Edge TTS network synthesis unavailable ({e2}). Generating synthesized fallback audio...")
+                if temp_mp3.exists():
+                    temp_mp3.unlink(missing_ok=True)
                 word_count = max(1, len(cleaned_text.split()))
                 estimated_duration_ms = max(800, min(10000, word_count * 320))
                 return await EdgeTTSProvider._generate_silence(output_path, estimated_duration_ms)

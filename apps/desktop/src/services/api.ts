@@ -262,6 +262,7 @@ export const api = {
     const res = await fetch(`${backendUrl}/subtitles/${projectId}/export/srt`, {
       headers: { 'X-DubStudio-Token': authToken },
     });
+    if (!res.ok) throw new Error(`Export SRT failed (HTTP ${res.status}): ${await res.text()}`);
     return res.text();
   },
 
@@ -269,6 +270,7 @@ export const api = {
     const res = await fetch(`${backendUrl}/subtitles/${projectId}/export/vtt`, {
       headers: { 'X-DubStudio-Token': authToken },
     });
+    if (!res.ok) throw new Error(`Export VTT failed (HTTP ${res.status}): ${await res.text()}`);
     return res.text();
   },
 

@@ -30,9 +30,12 @@ async def stream_job_events():
     async def event_generator():
         try:
             while True:
-                job: ProcessingJobResponse = await q.get()
-                payload = json.dumps(job.model_dump(by_alias=True), default=str)
-                yield f"data: {payload}\n\n"
+                try:
+                    job: ProcessingJobResponse = await asyncio.wait_for(q.get(), timeout=15.0)
+                    payload = json.dumps(job.model_dump(by_alias=True), default=str)
+                    yield f"data: {payload}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
         except asyncio.CancelledError:
             pass
         finally:

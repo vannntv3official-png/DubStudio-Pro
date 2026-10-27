@@ -41,7 +41,6 @@ async def regenerate_segment_tts(req: SingleSegmentTTSRequest):
 
 
 @router.post("/jobs", response_model=ProcessingJobResponse)
-
 async def start_tts_job(req: TTSJobRequest):
     job = await job_manager.create_job(
         project_id=req.project_id,
@@ -60,6 +59,7 @@ async def start_tts_job(req: TTSJobRequest):
             segment_ids=req.segment_ids,
             sync_mode=req.sync_mode,
             on_progress=progress_cb,
+            cancel_event=cancel_event,
         )
 
     job_manager.enqueue(job.id, execute_task)

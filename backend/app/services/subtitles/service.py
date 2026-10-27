@@ -399,9 +399,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         def parse_ts(ts_str: str) -> int:
             ts_str = ts_str.replace(",", ".")
-            h, m, s = ts_str.split(":")
-            sec, ms = s.split(".")
-            return int(h) * 3600000 + int(m) * 60000 + int(sec) * 1000 + int(ms)
+            parts = ts_str.split(":")
+            if len(parts) != 3:
+                return 0
+            h, m, rest = parts
+            if "." in rest:
+                sec, ms = rest.split(".", 1)
+            else:
+                sec, ms = rest, "000"
+            ms_clean = ms.ljust(3, "0")[:3]
+            try:
+                return int(h) * 3600000 + int(m) * 60000 + int(sec) * 1000 + int(ms_clean)
+            except ValueError:
+                return 0
 
         matches = pattern.findall(srt_content)
         async with session_maker() as session:

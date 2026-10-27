@@ -69,9 +69,11 @@ class TranscriptSplitRequest(BaseModel):
 
     segment_id: str
     split_time_ms: int
+    project_id: str | None = None
 
 
 class TranscriptMergeRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, alias_generator=to_camel)
 
     segment_ids: list[str] = Field(..., min_length=2)
+    project_id: str | None = None

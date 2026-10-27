@@ -73,6 +73,7 @@ export const SubtitleEditor: React.FC = () => {
       a.href = url;
       a.download = `${currentProject.name || 'subtitles'}.srt`;
       a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e: any) {
       alert(`Export failed: ${e.message}`);
     }
@@ -88,6 +89,7 @@ export const SubtitleEditor: React.FC = () => {
       a.href = url;
       a.download = `${currentProject.name || 'subtitles'}.vtt`;
       a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e: any) {
       alert(`Export failed: ${e.message}`);
     }

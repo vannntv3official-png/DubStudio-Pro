@@ -1,6 +1,8 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from sqlalchemy import select
 from app.database.session import get_project_engine, GlobalAsyncSessionLocal
 from app.models.project import ProjectModel
@@ -14,6 +16,8 @@ from app.providers.gemini.provider import GeminiProvider
 from app.providers.codecraft.provider import CodecraftProvider
 from app.schemas.translation import TranslationSegmentResponse, TranslationSegmentUpdate
 from app.utils.file_io import atomic_write_json
+
+logger = logging.getLogger("dubstudio.services.translation")
 
 
 
@@ -301,7 +305,8 @@ class TranslationService:
             if data.status is not None:
                 t.status = data.status
 
-            t.is_manually_edited = data.is_manually_edited
+            if data.is_manually_edited is not None:
+                t.is_manually_edited = data.is_manually_edited
             t.updated_at = datetime.now(timezone.utc)
 
             # Mark existing generated audios as stale if text was modified

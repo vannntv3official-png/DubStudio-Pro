@@ -150,7 +150,7 @@ export const TimelineEditor: React.FC = () => {
     if (currentProject) {
       loadTimeline(currentProject.id);
     }
-  }, [currentProject?.id]);
+  }, [currentProject?.id, loadTimeline]);
 
   // Drag resizer handler
   const handleResizeStart = (e: React.PointerEvent) => {
@@ -393,7 +393,7 @@ export const TimelineEditor: React.FC = () => {
         {/* Right: Zoom controls & Fit to screen & Height toggle */}
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setZoomLevel(zoomLevel - 20)}
+            onClick={() => setZoomLevel(Math.max(20, zoomLevel - 20))}
             className="p-1 rounded text-studio-muted hover:text-studio-text hover:bg-studio-hover transition-colors"
             title="Zoom Out (-)"
           >
@@ -405,7 +405,7 @@ export const TimelineEditor: React.FC = () => {
           </span>
 
           <button
-            onClick={() => setZoomLevel(zoomLevel + 20)}
+            onClick={() => setZoomLevel(Math.min(600, zoomLevel + 20))}
             className="p-1 rounded text-studio-muted hover:text-studio-text hover:bg-studio-hover transition-colors"
             title="Zoom In (+)"
           >

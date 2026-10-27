@@ -22,7 +22,7 @@ class TranslationSegmentModel(Base):
     model: Mapped[str] = mapped_column(String(128), default="gemini-3.5-flash")
     status: Mapped[str] = mapped_column(String(32), default="completed")
     approval_status: Mapped[str] = mapped_column(String(32), default="draft")
-    review_reasons: Mapped[list | None] = mapped_column(JSON, default=list)
+    review_reasons: Mapped[list | None] = mapped_column(JSON, default=lambda: [])
     context_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     form_of_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     dubbing_register: Mapped[str | None] = mapped_column(String(32), nullable=True)

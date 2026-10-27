@@ -71,8 +71,8 @@ export const RightInspector: React.FC = () => {
             min={0}
             max={2}
             step={0.05}
-            value={selectedClip.volume}
-            valueDisplay={`${Math.round(selectedClip.volume * 100)}%`}
+            value={selectedClip.volume ?? 1.0}
+            valueDisplay={`${Math.round((selectedClip.volume ?? 1.0) * 100)}%`}
             onChange={(e) => updateClip(selectedClip.trackId, selectedClip.id, { volume: parseFloat(e.target.value) })}
           />
 
@@ -81,8 +81,8 @@ export const RightInspector: React.FC = () => {
             min={0.5}
             max={2.0}
             step={0.05}
-            value={selectedClip.playbackRate}
-            valueDisplay={`${selectedClip.playbackRate.toFixed(2)}x`}
+            value={selectedClip.playbackRate ?? 1.0}
+            valueDisplay={`${(selectedClip.playbackRate ?? 1.0).toFixed(2)}x`}
             onChange={(e) => updateClip(selectedClip.trackId, selectedClip.id, { playbackRate: parseFloat(e.target.value) })}
           />
         </div>

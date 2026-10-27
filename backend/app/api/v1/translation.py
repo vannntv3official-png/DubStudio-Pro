@@ -42,4 +42,7 @@ async def get_project_translations(project_id: str):
 
 @router.put("/{project_id}/{translation_id}", response_model=TranslationSegmentResponse)
 async def update_translation_segment(project_id: str, translation_id: str, data: TranslationSegmentUpdate):
-    return await TranslationService.update_translation(project_id, translation_id, data)
+    try:
+        return await TranslationService.update_translation(project_id, translation_id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

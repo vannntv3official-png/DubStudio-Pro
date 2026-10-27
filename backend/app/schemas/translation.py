@@ -36,7 +36,7 @@ class TranslationSegmentUpdate(BaseModel):
     form_of_address: str | None = None
     dubbing_register: str | None = None
     status: str | None = None
-    is_manually_edited: bool = True
+    is_manually_edited: bool | None = None
 
 
 class TranslationSegmentResponse(BaseModel):
