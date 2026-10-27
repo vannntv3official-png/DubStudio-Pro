@@ -1,0 +1,46 @@
+# Node / Web
+node_modules/
+dist/
+dist-electron/
+release/
+.vite/
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs & Temporary Files
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Desktop / Projects
+*.sqlite
+*.sqlite-journal
+waveform-cache/
+preview-cache/
+thumbnails/
+exports/
+.test_user_data/
+backend/.test_user_data/
+backend/frame_*.png
+backend/exported_frame_*.png
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
+.env

@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Kantumruy+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: #2E3543;
+  }
+  body {
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+  }
+  input, textarea {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+}
+
+/* Dedicated Khmer Typography & Stroke Fill Layering */
+.font-khmer {
+  font-family: 'Kantumruy Pro', 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', sans-serif;
+  paint-order: stroke fill;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #111318;
+}
+::-webkit-scrollbar-thumb {
+  background: #2A303D;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3B82F6;
+}
+
+/* CapCut & TikTok Caption Animations */
+@keyframes caption-pop {
+  0% {
+    transform: scale(0.82);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes caption-fade-up {
+  0% {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes caption-zoom-in {
+  0% {
+    transform: scale(0.65);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes caption-highlight {
+  0% {
+    filter: brightness(1.7) contrast(1.2);
+    transform: scale(1.04);
+  }
+  100% {
+    filter: brightness(1) contrast(1);
+    transform: scale(1);
+  }
+}
+
+.animate-caption-pop {
+  animation: caption-pop 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.animate-caption-fade-up {
+  animation: caption-fade-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-caption-zoom-in {
+  animation: caption-zoom-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.animate-caption-highlight {
+  animation: caption-highlight 0.35s ease-out both;
+}

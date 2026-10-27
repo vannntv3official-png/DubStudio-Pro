@@ -1,0 +1,26 @@
+appId: com.dubstudio.ai
+productName: DubStudio AI
+directories:
+  output: release
+  buildResources: resources
+
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icons/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: DubStudio AI
+  uninstallDisplayName: DubStudio AI
+  deleteAppDataOnUninstall: false

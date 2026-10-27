@@ -1,0 +1,23 @@
+{
+  "name": "dubstudio-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Production-Grade AI Video Dubbing & Translation Studio for Windows Desktop",
+  "scripts": {
+    "dev": "pnpm --filter @dubstudio/desktop dev",
+    "dev:backend": "powershell -ExecutionPolicy Bypass -File scripts/development/start-backend.ps1",
+    "build": "pnpm --filter @dubstudio/shared-types build && pnpm --filter @dubstudio/desktop build",
+    "build:electron": "pnpm --filter @dubstudio/desktop build:electron",
+    "build:win": "pnpm --filter @dubstudio/desktop build:win",
+    "test": "pnpm --filter @dubstudio/desktop test",
+    "test:backend": "powershell -ExecutionPolicy Bypass -File scripts/development/test-backend.ps1",
+    "test:smoke": "node scripts/smoke_test_app.js",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  },
+  "packageManager": "pnpm@12.15.0"
+}
