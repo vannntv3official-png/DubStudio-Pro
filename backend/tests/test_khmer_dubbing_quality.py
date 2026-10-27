@@ -170,6 +170,26 @@ def test_truncated_uuid_and_alias_resolution():
     assert real_uuid_2 in alias_lookup
 
 
+def test_gemini_key_pool_dead_key_and_sticky_selection():
+    from app.providers.gemini.provider import GeminiProvider
+
+    # Reset static state for test
+    GeminiProvider._dead_keys.clear()
+    GeminiProvider._rate_limited_keys.clear()
+    GeminiProvider._last_successful_key = None
+
+    p = GeminiProvider(api_keys=["key_bad_1", "key_bad_2", "key_good_3"])
+    assert len(p.api_keys) == 3
+
+    # Simulate key_bad_1 marked dead
+    GeminiProvider._dead_keys.add("key_bad_1")
+    GeminiProvider._last_successful_key = "key_good_3"
+
+    # Next candidate ordering should prioritize sticky good key and exclude dead key
+    alive = [k for k in p.api_keys if k not in GeminiProvider._dead_keys]
+    assert "key_bad_1" not in alive
+    assert alive == ["key_bad_2", "key_good_3"]
+
 
 def test_translation_advisory_quality_checks():
     # 1. Check negation flip detection

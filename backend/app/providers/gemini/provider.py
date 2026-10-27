@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any
 from google import genai
@@ -68,6 +69,9 @@ def parse_gemini_keys(val: Any) -> list[str]:
 
 class GeminiProvider:
     _global_key_index: int = 0
+    _dead_keys: set[str] = set()
+    _rate_limited_keys: dict[str, float] = {}
+    _last_successful_key: str | None = None
 
     def __init__(
         self,
@@ -170,12 +174,34 @@ class GeminiProvider:
         if not self.api_keys:
             raise MissingApiKeyError("Gemini")
 
-        num_keys = len(self.api_keys)
-        # Round-robin starting key cursor across calls
-        start_key_idx = GeminiProvider._global_key_index % num_keys
-        GeminiProvider._global_key_index = (GeminiProvider._global_key_index + 1) % 1_000_000
+        now = time.time()
+        # Clean expired rate limits
+        expired_cooldowns = [k for k, exp in GeminiProvider._rate_limited_keys.items() if exp <= now]
+        for k in expired_cooldowns:
+            GeminiProvider._rate_limited_keys.pop(k, None)
 
-        ordered_keys = [self.api_keys[(start_key_idx + i) % num_keys] for i in range(num_keys)]
+        # Filter out dead and cooldown keys
+        alive_keys = [
+            k for k in self.api_keys
+            if k not in GeminiProvider._dead_keys and k not in GeminiProvider._rate_limited_keys
+        ]
+
+        if not alive_keys:
+            # If all keys were marked dead or rate limited, fall back to non-cooldown keys, or all keys
+            non_cooldown = [k for k in self.api_keys if k not in GeminiProvider._rate_limited_keys]
+            candidate_pool = non_cooldown if non_cooldown else self.api_keys
+        else:
+            candidate_pool = alive_keys
+
+        # Sticky key: if last successful key is still valid and in candidate pool, put it first!
+        if GeminiProvider._last_successful_key and GeminiProvider._last_successful_key in candidate_pool:
+            other_keys = [k for k in candidate_pool if k != GeminiProvider._last_successful_key]
+            ordered_keys = [GeminiProvider._last_successful_key] + other_keys
+        else:
+            num_keys = len(candidate_pool)
+            start_key_idx = GeminiProvider._global_key_index % num_keys
+            GeminiProvider._global_key_index = (GeminiProvider._global_key_index + 1) % 1_000_000
+            ordered_keys = [candidate_pool[(start_key_idx + i) % num_keys] for i in range(num_keys)]
 
         primary_model = self.model or "gemini-2.5-flash"
         fallbacks = FALLBACK_CANDIDATES.get(primary_model, DEFAULT_FALLBACKS)
@@ -189,8 +215,12 @@ class GeminiProvider:
         for key_idx, current_key in enumerate(ordered_keys):
             client = self._get_client_for_key(current_key)
             masked_key = f"...{current_key[-4:]}" if len(current_key) >= 4 else "..."
+            key_failed_permanently = False
 
             for model_idx, model_to_try in enumerate(candidate_models):
+                if key_failed_permanently:
+                    break
+
                 is_model_fallback = (model_idx > 0)
                 is_key_fallback = (key_idx > 0)
 
@@ -205,6 +235,11 @@ class GeminiProvider:
                             contents=contents,
                             config=config,
                         )
+                        # Record successful sticky key
+                        GeminiProvider._last_successful_key = current_key
+                        GeminiProvider._dead_keys.discard(current_key)
+                        GeminiProvider._rate_limited_keys.pop(current_key, None)
+
                         if is_key_fallback or is_model_fallback:
                             logger.info(
                                 f"Gemini {task_name} succeeded with key {masked_key} and model '{model_to_try}'!"
@@ -221,29 +256,41 @@ class GeminiProvider:
                             raise
 
                         is_rate_limited = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower()
-                        is_auth_error = "API_KEY_INVALID" in err_str or "401" in err_str or "403" in err_str or "API key not valid" in err_str
+                        is_auth_error = (
+                            "API_KEY_INVALID" in err_str
+                            or "401" in err_str
+                            or "403" in err_str
+                            or "API key not valid" in err_str
+                            or "UNAUTHENTICATED" in err_str
+                            or "INVALID_ARGUMENT" in err_str
+                        )
                         is_unavailable = "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str.lower()
                         is_not_found = "404" in err_str or "NOT_FOUND" in err_str
 
-                        # If rate limited (429) or auth error on this specific key,
-                        # rotate to the next key in the pool immediately!
-                        if (is_rate_limited or is_auth_error) and key_idx < len(ordered_keys) - 1:
+                        # If key is invalid/unauthenticated, mark dead permanently and rotate immediately (do NOT try other models on this dead key)
+                        if is_auth_error:
+                            GeminiProvider._dead_keys.add(current_key)
                             logger.warning(
-                                f"Gemini key {masked_key} encountered {err_str[:80]}. Automatically rotating to next key in pool..."
+                                f"Gemini key {masked_key} is invalid/unauthenticated. Marked dead, rotating to next key immediately..."
                             )
+                            key_failed_permanently = True
                             break
 
-                        # If model is unavailable (503) or not found (404), break to try next model
+                        # If rate limited (429/quota), apply 60s cooldown and rotate to next key immediately
+                        if is_rate_limited:
+                            GeminiProvider._rate_limited_keys[current_key] = time.time() + 60.0
+                            logger.warning(
+                                f"Gemini key {masked_key} hit rate limit / quota. Cooldown 60s, rotating to next key..."
+                            )
+                            key_failed_permanently = True
+                            break
+
+                        # If model is unavailable (503) or not found (404), break to try next model on this key
                         if is_unavailable or is_not_found:
                             break
 
                         if attempt < 2:
                             await asyncio.sleep(1.5)
-
-                # Check if we should rotate to next key due to rate limit/auth error
-                err_str = str(last_error or "")
-                if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "API_KEY_INVALID" in err_str) and key_idx < len(ordered_keys) - 1:
-                    break
 
         err_msg = str(last_error) if last_error else "Unknown Gemini service error"
         if "503" in err_msg or "UNAVAILABLE" in err_msg or "high demand" in err_msg.lower():

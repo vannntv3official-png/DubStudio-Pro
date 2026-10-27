@@ -84,6 +84,11 @@ async def update_settings(data: AppSettingsSchema):
                 session.add(SettingModel(key=k, value=v))
         await session.commit()
 
+    # Reset in-memory provider key health state on settings update
+    GeminiProvider._dead_keys.clear()
+    GeminiProvider._rate_limited_keys.clear()
+    GeminiProvider._last_successful_key = None
+
     return await get_settings()
 
 
