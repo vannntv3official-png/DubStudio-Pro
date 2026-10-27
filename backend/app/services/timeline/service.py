@@ -32,24 +32,28 @@ class TimelineService:
             clips_by_track: dict[str, list[TimelineClipSchema]] = {t.id: [] for t in tracks}
             for c in clips:
                 if c.track_id in clips_by_track:
-                    clips_by_track[c.track_id].append(
-                        TimelineClipSchema(
-                            id=c.id,
-                            trackId=c.track_id,
-                            projectId=c.project_id,
-                            sourceId=c.source_id,
-                            label=c.label,
-                            startMs=c.start_ms,
-                            durationMs=c.duration_ms,
-                            sourceOffsetMs=c.source_offset_ms,
-                            playbackRate=c.playback_rate,
-                            volume=c.volume,
-                            muted=c.muted,
-                            locked=c.locked,
-                            color=c.color,
-                            metadata=c.metadata_json,
-                        )
+                    track_clips = clips_by_track[c.track_id]
+                    clip_schema = TimelineClipSchema(
+                        id=c.id,
+                        trackId=c.track_id,
+                        projectId=c.project_id,
+                        sourceId=c.source_id,
+                        label=c.label,
+                        startMs=c.start_ms,
+                        durationMs=c.duration_ms,
+                        sourceOffsetMs=c.source_offset_ms,
+                        playbackRate=c.playback_rate,
+                        volume=c.volume,
+                        muted=c.muted,
+                        locked=c.locked,
+                        color=c.color,
+                        metadata=c.metadata_json,
                     )
+                    # Automatically heal stacked duplicates at identical start times
+                    if track_clips and track_clips[-1].startMs == c.start_ms:
+                        track_clips[-1] = clip_schema
+                    else:
+                        track_clips.append(clip_schema)
 
             track_schemas = [
                 TimelineTrackSchema(

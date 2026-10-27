@@ -439,25 +439,52 @@ class SpeechAndAlignmentService:
                 session.add(gen_model)
                 generated_list.append(gen_model)
 
-                # Update dubbed_voice timeline track
+                # Update dubbed_voice timeline track (strictly purge all prior takes/clips for this segment)
                 if dub_track:
+                    old_take_ids = [ex.id for ex in res["existing_takes"]]
+                    if old_take_ids:
+                        await session.execute(
+                            delete(TimelineClipModel).where(
+                                TimelineClipModel.track_id == dub_track.id,
+                                TimelineClipModel.source_id.in_(old_take_ids),
+                            )
+                        )
                     await session.execute(
                         delete(TimelineClipModel).where(
                             TimelineClipModel.track_id == dub_track.id,
-                            TimelineClipModel.source_id == gen_model.id,
+                            TimelineClipModel.start_ms == t_seg.start_ms,
                         )
                     )
+
+                    clip_color = "#3B82F6"
+                    if "synthesis_error" in review_reasons:
+                        clip_color = "#EF4444"
+                    elif "timing_overrun" in review_reasons:
+                        clip_color = "#F59E0B"
+
+                    clean_label = spoken_script.strip()
+                    if len(clean_label) > 180:
+                        clean_label = clean_label[:180] + "…"
+
                     clip = TimelineClipModel(
                         id=str(uuid.uuid4()),
                         track_id=dub_track.id,
                         project_id=project_id,
                         source_id=gen_model.id,
-                        label=spoken_script[:30],
+                        label=clean_label,
                         start_ms=t_seg.start_ms,
                         duration_ms=int(final_dur_ms),
                         playback_rate=1.0,
                         volume=1.0,
-                        color="#3B82F6",
+                        color=clip_color,
+                        metadata_json={
+                            "segmentId": t_seg.id,
+                            "reviewStatus": review_status,
+                            "reviewReasons": review_reasons,
+                            "tempoFactor": round(res["tempo_factor"], 2),
+                            "targetDurationMs": res["target_dur_ms"],
+                            "availableWindowMs": res["available_window_ms"],
+                        },
                     )
                     session.add(clip)
 

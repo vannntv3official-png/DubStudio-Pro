@@ -144,6 +144,7 @@ export const TimelineEditor: React.FC = () => {
     fixOverlaps,
   } = useSubtitleStore();
   const translations = useTranslationStore((s) => s.translations);
+  const generatedAudios = useTranslationStore((s) => s.generatedAudios);
   const segments = useTranscriptStore((s) => s.segments);
 
   useEffect(() => {
@@ -261,6 +262,40 @@ export const TimelineEditor: React.FC = () => {
     }
     return resolveNonOverlappingClips(raw);
   }, [subtitleItems, translations, segments]);
+
+  // Derived dubbed voice clips if track clips in DB have not been synced yet
+  const activeDubClips = useMemo(() => {
+    if (!generatedAudios || generatedAudios.length === 0 || !segments || segments.length === 0) {
+      return [];
+    }
+    const segMap = new Map(segments.map((s) => [s.id, s]));
+    const trMap = new Map((translations || []).map((t) => [t.segmentId, t]));
+    return generatedAudios
+      .map((g) => {
+        const seg = segMap.get(g.segmentId);
+        if (!seg || !g.alignedAudioPath) return null;
+        const tr = trMap.get(g.segmentId);
+        const hasOverrun = g.reviewReasons?.includes('timing_overrun');
+        return {
+          id: g.id,
+          trackId: 'dubbed_voice',
+          projectId: g.projectId,
+          sourceId: g.id,
+          label: tr?.spokenScript || tr?.translatedText || seg.text,
+          startMs: seg.startMs,
+          durationMs: g.alignedDurationMs,
+          sourceOffsetMs: 0,
+          playbackRate: 1.0,
+          volume: 1.0,
+          color: hasOverrun ? '#F59E0B' : '#3B82F6',
+          metadata: {
+            reviewStatus: g.reviewStatus,
+            reviewReasons: g.reviewReasons,
+          },
+        };
+      })
+      .filter(Boolean) as any[];
+  }, [generatedAudios, segments, translations]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     setScrollLeft(e.currentTarget.scrollLeft);
@@ -537,10 +572,29 @@ export const TimelineEditor: React.FC = () => {
           >
             {displayTracks.map((track) => {
               const isSubtitleTrack = track.type === 'subtitles';
-              const rawClips = isSubtitleTrack && (!track.clips || track.clips.length === 0)
-                ? activeSubClips
-                : (track.clips || []);
-              const clipsToRender = isSubtitleTrack ? resolveNonOverlappingClips(rawClips) : rawClips;
+              const isDubTrack = track.type === 'dubbed_voice';
+              let rawClips = track.clips && track.clips.length > 0 ? track.clips : [];
+              if (isSubtitleTrack && rawClips.length === 0) {
+                rawClips = activeSubClips;
+              } else if (isDubTrack && rawClips.length === 0) {
+                rawClips = activeDubClips;
+              }
+
+              let clipsToRender = rawClips;
+              if (isSubtitleTrack) {
+                clipsToRender = resolveNonOverlappingClips(rawClips);
+              } else if (isDubTrack && rawClips.length > 1) {
+                const sorted = [...rawClips].sort((a, b) => a.startMs - b.startMs);
+                const deduped: any[] = [];
+                for (const c of sorted) {
+                  if (deduped.length > 0 && Math.abs(deduped[deduped.length - 1].startMs - c.startMs) < 30) {
+                    deduped[deduped.length - 1] = c;
+                  } else {
+                    deduped.push(c);
+                  }
+                }
+                clipsToRender = deduped;
+              }
 
               return (
                 <div

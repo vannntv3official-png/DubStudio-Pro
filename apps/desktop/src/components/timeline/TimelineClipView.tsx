@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Mic, AlertTriangle } from 'lucide-react';
 import type { TimelineClip } from '@dubstudio/shared-types';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -175,36 +176,52 @@ export const TimelineClipView: React.FC<TimelineClipViewProps> = ({ clip, trackT
     );
   }
 
+  const isDubbedTrack = trackType === 'dubbed_voice';
+  const reviewReasons = (clip.metadata?.reviewReasons as string[]) || [];
+  const hasOverrun = reviewReasons.includes('timing_overrun') || clip.color === '#F59E0B';
+  const hasError = reviewReasons.includes('synthesis_error') || clip.color === '#EF4444';
+
+  const effectiveBgColor = hasError ? '#EF444426' : hasOverrun ? '#F59E0B26' : `${getTrackColor()}33`;
+  const effectiveBorderColor = isSelected
+    ? '#FFFFFF'
+    : hasError
+    ? '#EF4444'
+    : hasOverrun
+    ? '#F59E0B'
+    : getTrackColor();
+
   return (
     <div
       data-timeline-clip="true"
       onPointerDown={handlePointerDown}
       style={{
         left: `${leftPx}px`,
-        width: `${widthPx}px`,
-        backgroundColor: `${getTrackColor()}33`,
-        borderColor: isSelected ? '#FFFFFF' : getTrackColor(),
+        width: `${Math.max(16, widthPx - 2)}px`,
+        backgroundColor: effectiveBgColor,
+        borderColor: effectiveBorderColor,
       }}
-      title={`${clip.label || 'Clip'} (${(clip.startMs / 1000).toFixed(2)}s - ${((clip.startMs + clip.durationMs) / 1000).toFixed(2)}s)`}
-      className={`absolute top-1 bottom-1 rounded border overflow-hidden flex items-center px-2 cursor-grab active:cursor-grabbing select-none transition-shadow group/clip ${
-        isSelected ? 'ring-2 ring-white shadow-lg z-20' : 'hover:brightness-110'
+      title={`${clip.label || 'Clip'} (${(clip.startMs / 1000).toFixed(2)}s - ${((clip.startMs + clip.durationMs) / 1000).toFixed(2)}s)${
+        hasOverrun ? ' [Timing Overrun: Longer than original pause window]' : ''
+      }`}
+      className={`absolute top-1 bottom-1 rounded-md border overflow-hidden flex items-center px-1.5 cursor-grab active:cursor-grabbing select-none transition-shadow group/clip ${
+        isSelected ? 'ring-2 ring-white shadow-lg z-20' : 'hover:brightness-110 shadow-sm'
       }`}
     >
       {/* Left Accent Bar */}
       <div
-        style={{ backgroundColor: getTrackColor() }}
+        style={{ backgroundColor: effectiveBorderColor }}
         className="w-1 h-full absolute left-0 top-0 bottom-0 pointer-events-none"
       />
 
       {/* Audio Waveform Background Layer */}
       {isAudioTrack && waveformBars.length > 0 && (
-        <div className="absolute inset-0 pl-3 pr-3 flex items-center gap-[1px] pointer-events-none opacity-30 group-hover/clip:opacity-50 transition-opacity">
+        <div className="absolute inset-0 pl-3 pr-3 flex items-center gap-[1px] pointer-events-none opacity-25 group-hover/clip:opacity-40 transition-opacity">
           {waveformBars.map((amp, idx) => (
             <div
-              key={idx}
+              key={`bar-${clip.id}-${idx}`}
               style={{
                 height: `${Math.round(amp * 85)}%`,
-                backgroundColor: getTrackColor(),
+                backgroundColor: effectiveBorderColor,
               }}
               className="w-[2px] rounded-full shrink-0"
             />
@@ -247,13 +264,35 @@ export const TimelineClipView: React.FC<TimelineClipViewProps> = ({ clip, trackT
       />
 
       {/* Content Label & Duration */}
-      <div className="flex items-center justify-between w-full min-w-0 z-10 pointer-events-none py-1">
-        <span className="text-xs font-medium text-studio-text truncate ml-1 font-khmer drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] leading-relaxed">
-          {clip.label || 'Clip'}
-        </span>
-        {/* Only show duration badge if clip is wide enough to prevent clashing with Khmer text */}
-        {widthPx >= 110 && (
-          <span className="text-[9px] font-mono text-white/90 bg-black/60 px-1.5 py-0.5 rounded ml-2 shrink-0 border border-white/10 shadow-sm">
+      <div className="flex items-center justify-between w-full min-w-0 z-10 pointer-events-none py-1 gap-1">
+        <div className="flex items-center min-w-0 gap-1 overflow-hidden">
+          {isDubbedTrack && widthPx >= 50 && (
+            <span
+              className={`px-1 py-0.5 rounded text-[8px] font-bold tracking-tight uppercase flex items-center gap-0.5 shrink-0 ${
+                hasOverrun
+                  ? 'bg-amber-950/80 text-amber-300 border border-amber-500/40'
+                  : 'bg-blue-950/80 text-blue-300 border border-blue-500/40'
+              }`}
+            >
+              <Mic className="w-2.5 h-2.5" />
+              <span>DUB</span>
+            </span>
+          )}
+
+          {hasOverrun && (
+            <span title="Timing Overrun: audio is slightly longer than the original window" className="shrink-0 flex items-center">
+              <AlertTriangle className="w-3 h-3 text-amber-400" />
+            </span>
+          )}
+
+          <span className="text-xs font-medium text-white truncate font-khmer drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] leading-relaxed">
+            {clip.label || 'Clip'}
+          </span>
+        </div>
+
+        {/* Clean Duration badge with spacing so it never collides with adjacent clip text */}
+        {widthPx >= 130 && (
+          <span className="text-[9px] font-mono text-white/90 bg-black/70 px-1.5 py-0.5 rounded mr-1 shrink-0 border border-white/10 shadow-sm">
             {durSec}s
           </span>
         )}

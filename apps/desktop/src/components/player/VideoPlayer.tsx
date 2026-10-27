@@ -171,9 +171,13 @@ export const VideoPlayer: React.FC = () => {
       return;
     }
 
-    const activeClip = dubbedClips.find(
+    const matchingClips = dubbedClips.filter(
       (c) => currentTimeMs >= c.startMs && currentTimeMs < c.endMs
     );
+    // If adjacent clips touch or slightly overlap due to overrun, prioritize the newly starting dialogue
+    const activeClip = matchingClips.length > 0
+      ? matchingClips.reduce((prev, curr) => (curr.startMs > prev.startMs ? curr : prev))
+      : null;
 
     if (activeClip) {
       setIsDuckingActive(Boolean(currentProject?.audioSettings?.duckingEnabled !== false));
