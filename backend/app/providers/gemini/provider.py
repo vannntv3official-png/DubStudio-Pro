@@ -8,6 +8,11 @@ from google import genai
 from google.genai import types
 from app.core.errors import MissingApiKeyError, ProviderAuthError, ProviderRateLimitError, DubStudioError
 from app.providers.base import TranscriptResultItem, TranslationResultItem
+from app.utils.json_repair import (
+    clean_and_repair_json,
+    extract_gemini_response_text,
+    unwrap_transcript_data,
+)
 
 logger = logging.getLogger("dubstudio.providers.gemini")
 
@@ -339,9 +344,8 @@ class GeminiProvider:
             "Transcribe the spoken audio with HIGH-PRECISION TIMESTAMPS and NATURAL BREATH-PAUSE SEGMENTATION.\n\n"
             "CRITICAL SEGMENTATION RULES (កាត់ខ្លីតាមដង្ហើម):\n"
             "1. NEVER output long paragraphs or run-on sentences. Maximum 4 to 8 words (or 1.5 to 3.0 seconds) per segment.\n"
-            "2. Split speech into short natural phrases matching the speaker's breathing pauses, intonation breaks, and punctuation (periods '។', commas ',', question marks '?', ellipses).\n"
-            "3. Timestamps 'start_ms' and 'end_ms' must be strictly accurate to the exact audio millisecond when each phrase begins and ends.\n"
-            "4. Each segment must have word-level timings in the 'words' array: [{'word': '...', 'start_ms': 1200, 'end_ms': 1500}].\n\n"
+            "2. Split speech into short natural phrases matching the speaker's breathing pauses, intonation breaks, and punctuation (periods '。' / '។', commas '，' / ',', question marks '?', ellipses).\n"
+            "3. Timestamps 'start_ms' and 'end_ms' must be strictly accurate to the exact audio millisecond when each phrase begins and ends.\n\n"
             "Format the output strictly as a JSON array of segment objects:\n"
             "[\n"
             "  {\n"
@@ -349,8 +353,7 @@ class GeminiProvider:
             "    \"end_ms\": 3400,\n"
             "    \"text\": \"...\",\n"
             "    \"speaker_id\": \"speaker_1\",\n"
-            "    \"language\": \"km\",\n"
-            "    \"words\": [{\"word\": \"...\", \"start_ms\": 1200, \"end_ms\": 1600}]\n"
+            "    \"language\": \"zh\"\n"
             "  }\n"
             "]"
         )
@@ -359,6 +362,7 @@ class GeminiProvider:
         else:
             prompt += " Automatically detect and accurately transcribe whatever spoken language is present in the audio (e.g. Chinese, English, Khmer, Thai, Japanese, etc.)."
 
+        raw_text = ""
         try:
             with open(path, "rb") as f:
                 audio_bytes = f.read()
@@ -373,17 +377,21 @@ class GeminiProvider:
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=0.2,
+                    max_output_tokens=8192,
                 ),
                 task_name="transcription",
             )
 
-            raw_text = response.text or ""
-            data = json.loads(raw_text)
-            if isinstance(data, dict) and "segments" in data:
-                data = data["segments"]
+            raw_text = extract_gemini_response_text(response)
+            if not raw_text:
+                logger.warning("extract_gemini_response_text returned empty string, checking response.text...")
+                raw_text = response.text or ""
+
+            parsed_data = clean_and_repair_json(raw_text)
+            segment_items = unwrap_transcript_data(parsed_data)
 
             results: list[TranscriptResultItem] = []
-            for item in data:
+            for item in segment_items:
                 results.append(
                     TranscriptResultItem(
                         start_ms=int(item.get("start_ms", 0)),
@@ -396,9 +404,6 @@ class GeminiProvider:
                     )
                 )
             return results
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Gemini transcription JSON: {e}, raw: {raw_text[:500]}")
-            raise DubStudioError("TRANSCRIPTION_PARSE_ERROR", "Failed to parse transcription response from Gemini.")
         except (DubStudioError, ProviderAuthError, ProviderRateLimitError):
             raise
         except Exception as e:
@@ -407,7 +412,8 @@ class GeminiProvider:
                 raise ProviderRateLimitError("Gemini", details=err_str)
             if "API_KEY_INVALID" in err_str or "401" in err_str or "403" in err_str:
                 raise ProviderAuthError("Gemini", details=err_str)
-            raise DubStudioError("TRANSCRIPTION_FAILED", f"Gemini transcription failed: {err_str}")
+            logger.error(f"Failed to parse Gemini transcription JSON: {e}, raw: {raw_text[:600]}")
+            raise DubStudioError("TRANSCRIPTION_PARSE_ERROR", f"Failed to parse transcription response from Gemini: {e}")
 
     async def translate(
         self,
@@ -491,14 +497,18 @@ class GeminiProvider:
                     system_instruction=system_instruction,
                     response_mime_type="application/json",
                     temperature=0.3,
+                    max_output_tokens=8192,
                 ),
                 task_name="translation",
             )
 
-            raw_text = response.text or ""
-            data = json.loads(raw_text)
+            raw_text = extract_gemini_response_text(response)
+            if not raw_text:
+                raw_text = response.text or ""
+
+            data = clean_and_repair_json(raw_text)
             if isinstance(data, dict):
-                for k in ["translations", "segments", "data"]:
+                for k in ["translations", "segments", "data", "results", "items"]:
                     if k in data and isinstance(data[k], list):
                         data = data[k]
                         break
