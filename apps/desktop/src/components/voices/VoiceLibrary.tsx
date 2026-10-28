@@ -63,7 +63,6 @@ export const VoiceLibrary: React.FC = () => {
           { value: 'all', label: 'All Natural Voices' },
           { value: 'km', label: 'Khmer (km-KH)' },
           { value: 'en', label: 'English (en-US, en-GB)' },
-          { value: 'th', label: 'Thai (th-TH)' },
           { value: 'vi', label: 'Vietnamese (vi-VN)' },
           { value: 'zh', label: 'Chinese (zh-CN)' },
           { value: 'ja', label: 'Japanese (ja-JP)' },

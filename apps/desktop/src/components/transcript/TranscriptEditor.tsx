@@ -231,7 +231,6 @@ export const TranscriptEditor: React.FC = () => {
                   { value: 'zh', label: 'Chinese / 中文 (ចិន)' },
                   { value: 'en', label: 'English (អង់គ្លេស)' },
                   { value: 'km', label: 'Khmer (ខ្មែរ)' },
-                  { value: 'th', label: 'Thai (ไทย)' },
                   { value: 'vi', label: 'Vietnamese (Tiếng Việt)' },
                   { value: 'ja', label: 'Japanese (日本語)' },
                   { value: 'ko', label: 'Korean (한국어)' },

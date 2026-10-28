@@ -46,7 +46,6 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClos
               { value: 'auto', label: 'Auto Detect (ស្វ័យប្រវត្តិ)' },
               { value: 'zh', label: 'Chinese (ភាសាចិន)' },
               { value: 'en', label: 'English (អង់គ្លេស)' },
-              { value: 'th', label: 'Thai (ថៃ)' },
               { value: 'km', label: 'Khmer (ខ្មែរ)' },
               { value: 'ko', label: 'Korean (កូរ៉េ)' },
               { value: 'ja', label: 'Japanese (ជប៉ុន)' },
@@ -63,7 +62,6 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClos
             options={[
               { value: 'km', label: 'Khmer (ភាសាខ្មែរ - Default)' },
               { value: 'en', label: 'English' },
-              { value: 'th', label: 'Thai (ไทย)' },
               { value: 'vi', label: 'Vietnamese (Tiếng Việt)' },
               { value: 'zh', label: 'Chinese (中文)' },
               { value: 'ja', label: 'Japanese (日本語)' },

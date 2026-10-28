@@ -360,7 +360,7 @@ class GeminiProvider:
         if source_language and source_language.lower() not in ("auto", "detect", "auto-detect"):
             prompt += f" The expected spoken language is {source_language}."
         else:
-            prompt += " Automatically detect and accurately transcribe whatever spoken language is present in the audio (e.g. Chinese, English, Khmer, Thai, Japanese, etc.)."
+            prompt += " Automatically detect and accurately transcribe whatever spoken language is present in the audio (e.g. Chinese, English, Khmer, Japanese, Korean, Vietnamese, etc.)."
 
         raw_text = ""
         try:

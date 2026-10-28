@@ -44,8 +44,6 @@ LANGUAGE_DISPLAY_NAMES = {
     "english": "English (ភាសាអង់គ្លេស)",
     "km": "Khmer (ភាសាខ្មែរ)",
     "khmer": "Khmer (ភាសាខ្មែរ)",
-    "th": "Thai (ភាសាថៃ)",
-    "thai": "Thai (ភាសាថៃ)",
     "ko": "Korean (ភាសាកូរ៉េ)",
     "korean": "Korean (ភាសាកូរ៉េ)",
     "ja": "Japanese (ភាសាជប៉ុន)",

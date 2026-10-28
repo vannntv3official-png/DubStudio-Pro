@@ -362,7 +362,6 @@ export const TranslationEditor: React.FC = () => {
                   { value: 'km', label: 'Khmer (ខ្មែរ)' },
                   { value: 'en', label: 'English (EN)' },
                   { value: 'zh', label: 'Chinese (中文)' },
-                  { value: 'th', label: 'Thai (ไทย)' },
                   { value: 'vi', label: 'Vietnamese (Tiếng Việt)' },
                   { value: 'ja', label: 'Japanese (日本語)' },
                 ]}
