@@ -373,12 +373,37 @@ export const SettingsModal: React.FC = () => {
                         Speech Synthesis Engine (TTS)
                       </span>
                       <span className="text-[11px] text-slate-500 dark:text-zinc-400">
-                        Microsoft Edge-TTS (Khmer Neural: km-KH-PisethNeural & km-KH-Sreymom/Daun)
+                        Microsoft Edge-TTS (Khmer Neural: km-KH-PisethNeural & km-KH-SreymomNeural)
                       </span>
                     </div>
                   </div>
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
                     Active & Fast
+                  </span>
+                </div>
+
+                {/* VoxCPM2 Coming Soon / Experimental Row */}
+                <div className="p-2.5 rounded-xl bg-slate-100/60 dark:bg-zinc-900/40 border border-dashed border-slate-300 dark:border-zinc-800 flex items-center justify-between text-xs opacity-80">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-slate-700 dark:text-zinc-300 text-xs">
+                          VoxCPM2 Neural Cloning Engine
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200/50">
+                          Coming Soon / កំពុងសាកល្បង
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 dark:text-zinc-400">
+                        Zero-Shot Khmer Voice Cloning & Emotion Transfer (ស្ថិតក្រោមការស្រាវជ្រាវ មិនទាន់ដាក់ឱ្យប្រើប្រាស់ឡើយ)
+                      </span>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-200/70 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">
+                    Disabled for Now
                   </span>
                 </div>
               </div>
