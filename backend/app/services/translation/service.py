@@ -65,6 +65,15 @@ class TranslationService:
             ex_res = await session.execute(ex_stmt)
             existing_map = {t.segment_id: t for t in ex_res.scalars().all()}
 
+            # Auto-detect actual source language script from transcripts if set to 'en' or 'auto'
+            from app.services.khmer.localization_guard import detect_text_language
+            effective_source_lang = source_language
+            if not effective_source_lang or effective_source_lang.lower() in ("auto", "detect", "auto-detect", "en"):
+                sample_texts = [t.text for t in transcripts[:20]]
+                detected = detect_text_language(sample_texts, fallback=source_language or "en")
+                if detected != "en" or effective_source_lang.lower() in ("auto", "detect", "auto-detect"):
+                    effective_source_lang = detected
+
             # Build structured dialogue context
             project_context = DialogueContextBuilder.build_context(
                 project_id=project_id,
@@ -74,7 +83,7 @@ class TranslationService:
                 glossary=glossary or (project.glossary if hasattr(project, "glossary") else None) or {},
                 character_memory=project.character_memory if hasattr(project, "character_memory") else None,
                 dubbing_register=getattr(project, "dubbing_register", "natural"),
-                source_language=source_language,
+                source_language=effective_source_lang,
                 target_language=target_language,
             )
 
@@ -85,7 +94,7 @@ class TranslationService:
             ]
 
             if on_progress:
-                on_progress(15.0, f"Initializing {provider_name.capitalize()} for {source_language} -> {target_language} translation...")
+                on_progress(15.0, f"Initializing {provider_name.capitalize()} for {effective_source_lang} -> {target_language} translation...")
 
             t_lookup: dict[str, Any] = {}
 
@@ -134,7 +143,7 @@ class TranslationService:
 
                     translated_results = await provider.translate(
                         segments=payload_segments,
-                        source_language=source_language,
+                        source_language=effective_source_lang,
                         target_language=target_language,
                         options={
                             "glossary": project_context.glossary,

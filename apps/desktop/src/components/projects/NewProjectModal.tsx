@@ -15,7 +15,7 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClos
   const { createProject, isLoading } = useProjectStore();
 
   const [name, setName] = useState('New Dubbing Project');
-  const [sourceLang, setSourceLang] = useState('en');
+  const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('km');
   const [syncMode, setSyncMode] = useState('balanced');
 
@@ -43,14 +43,16 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClos
           <Select
             label="Original Video Language"
             options={[
-              { value: 'en', label: 'English' },
-              { value: 'km', label: 'Khmer' },
-              { value: 'th', label: 'Thai' },
-              { value: 'vi', label: 'Vietnamese' },
-              { value: 'zh', label: 'Chinese' },
-              { value: 'ja', label: 'Japanese' },
-              { value: 'fr', label: 'French' },
-              { value: 'es', label: 'Spanish' },
+              { value: 'auto', label: 'Auto Detect (ស្វ័យប្រវត្តិ)' },
+              { value: 'zh', label: 'Chinese (ភាសាចិន)' },
+              { value: 'en', label: 'English (អង់គ្លេស)' },
+              { value: 'th', label: 'Thai (ថៃ)' },
+              { value: 'km', label: 'Khmer (ខ្មែរ)' },
+              { value: 'ko', label: 'Korean (កូរ៉េ)' },
+              { value: 'ja', label: 'Japanese (ជប៉ុន)' },
+              { value: 'vi', label: 'Vietnamese (វៀតណាម)' },
+              { value: 'fr', label: 'French (បារាំង)' },
+              { value: 'es', label: 'Spanish (អេស្ប៉ាញ)' },
             ]}
             value={sourceLang}
             onChange={(e) => setSourceLang(e.target.value)}

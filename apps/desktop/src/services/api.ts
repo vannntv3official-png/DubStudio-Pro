@@ -110,7 +110,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 // Projects
 export const api = {
   // Projects
-  async createProject(name: string, sourceLanguage = 'en', targetLanguage = 'km', syncMode = 'balanced'): Promise<ProjectManifest> {
+  async createProject(name: string, sourceLanguage = 'auto', targetLanguage = 'km', syncMode = 'balanced'): Promise<ProjectManifest> {
     return request<ProjectManifest>('/projects', {
       method: 'POST',
       body: JSON.stringify({ name, sourceLanguage, targetLanguage, syncMode }),

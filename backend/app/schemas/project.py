@@ -45,7 +45,7 @@ class ProjectCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True, alias_generator=to_camel)
 
     name: str = Field(..., min_length=1, max_length=255)
-    source_language: str | None = "en"
+    source_language: str | None = "auto"
     target_language: str | None = "km"
     sync_mode: str = "balanced"
 

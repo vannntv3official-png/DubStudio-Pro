@@ -36,7 +36,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  createProject: async (name, sourceLang = 'en', targetLang = 'km', syncMode = 'balanced') => {
+  createProject: async (name, sourceLang = 'auto', targetLang = 'km', syncMode = 'balanced') => {
     set({ isLoading: true, error: null });
     try {
       const project = await api.createProject(name, sourceLang, targetLang, syncMode);

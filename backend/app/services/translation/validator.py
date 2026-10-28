@@ -128,6 +128,7 @@ class TranslationBatchValidator:
         duration_sec: float,
         glossary: dict[str, str] | None = None,
         preferred_address: str | None = None,
+        target_language: str = "km",
     ) -> list[str]:
         """
         Performs advisory semantic and timing checks without raising exceptions.
@@ -138,6 +139,15 @@ class TranslationBatchValidator:
         src_lower = source_text.lower()
         t_clean = translated_text.strip()
         spoken_clean = spoken_script.strip() if spoken_script else t_clean
+        is_khmer = target_language.lower() in ("km", "khmer", "km-kh")
+
+        # 0. Khmer purity checks (zero Thai script and zero untranslated CJK)
+        if is_khmer:
+            from app.services.khmer.localization_guard import has_thai_script, has_untranslated_cjk
+            if has_thai_script(spoken_clean) or has_thai_script(t_clean):
+                review_reasons.append("thai_script_detected")
+            if has_untranslated_cjk(spoken_clean) or has_untranslated_cjk(t_clean):
+                review_reasons.append("untranslated_cjk_detected")
 
         # 1. Untranslated source check
         if src_lower == t_clean.lower() and len(src_lower) > 3:

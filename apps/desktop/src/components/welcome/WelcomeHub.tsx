@@ -30,7 +30,7 @@ export const WelcomeHub: React.FC<WelcomeHubProps> = ({ onOpenNewProject }) => {
         if (selectedPath) {
           // Automatically create a project named after the video file
           const fileName = selectedPath.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || 'Dubbed Video';
-          await createProject(`${fileName} Dub`, 'en', 'km', 'balanced');
+          await createProject(`${fileName} Dub`, 'auto', 'km', 'balanced');
           await importMediaFile(selectedPath);
         }
       } catch (err: any) {
@@ -45,7 +45,7 @@ export const WelcomeHub: React.FC<WelcomeHubProps> = ({ onOpenNewProject }) => {
       if (typeof window !== 'undefined' && window.dubstudio) {
         const selectedPath = await window.dubstudio.selectVideoFile();
         if (selectedPath) {
-          await createProject('Khmer Dubbing Demo', 'en', 'km', 'balanced');
+          await createProject('Khmer Dubbing Demo', 'auto', 'km', 'balanced');
           await importMediaFile(selectedPath);
         }
       }
